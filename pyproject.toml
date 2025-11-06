@@ -6,4 +6,5 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.120.3",
+    "yt-dlp>=2025.10.22",
 ]
