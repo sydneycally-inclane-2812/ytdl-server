@@ -10,3 +10,5 @@ wheels/
 /.venv/
 /.key/
 .env
+/.database/
+/*_log.txt
