@@ -1,27 +1,10 @@
+
+# Helper functions for initialization
 import logging
 import os
+import sqlite3
 from pathlib import Path
 
-def get_logger():
-	logger = logging.getLogger()
-	# Clear any existing handlers first to prevent duplication
-	if logger.handlers:
-		logger.handlers.clear()
-	logger.setLevel(logging.DEBUG)
-	# File handler
-	file_handler = logging.FileHandler('api_log.txt', mode='a')
-	file_handler.setLevel(logging.DEBUG)
-	# Console handler
-	console_handler = logging.StreamHandler()
-	console_handler.setLevel(logging.DEBUG)
-	# Formatter for both handlers
-	formatter = logging.Formatter('%(asctime)s  %(levelname)s  %(message)s')
-	file_handler.setFormatter(formatter)
-	console_handler.setFormatter(formatter)
-	# Add handlers
-	logger.addHandler(file_handler)
-	logger.addHandler(console_handler)
-	return logger
 
 def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
     """
@@ -68,3 +51,38 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
         ],
     }
     return ydl_opts
+
+def init_db(path: Path):
+    conn = sqlite3.connect(str(path))
+    try:
+        conn.execute("PRAGMA foreign_keys = ON;")
+        conn.executescript("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL UNIQUE,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS playlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_url TEXT NOT NULL,
+            title TEXT,
+            owner_id INTEGER NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_playlists_owner ON playlists(owner_id);
+        CREATE TABLE IF NOT EXISTS playlist_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            playlist_id INTEGER NOT NULL,
+            video_id TEXT NOT NULL,
+            title TEXT,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_items_playlist ON playlist_items(playlist_id);
+        """)
+        conn.commit()
+    finally:
+        conn.close()

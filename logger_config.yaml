@@ -1,0 +1,30 @@
+version: 1
+
+formatters:
+  simple:
+    format: "%(asctime)s %(name)s: %(message)s"
+  extended:
+    format: "%(asctime)s %(name)s %(levelname)s [%(filename)s:%(funcName)s]: %(message)s"
+    validate: False  # Ensure no truncation of long lines
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: DEBUG
+    formatter: extended
+
+  file_handler:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    filename: "test.log"
+    formatter: extended
+    
+loggers:
+  dev:
+    level: DEBUG
+    handlers: [console, file_handler]
+    propagate: False
+    
+root:
+  level: DEBUG
+  handlers: [console, file_handler]

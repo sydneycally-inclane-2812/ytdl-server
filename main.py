@@ -1,31 +1,49 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from contextlib import asynccontextmanager
-from helper import get_ydl_opts, get_logger
+from helpers import get_ydl_opts, init_db
 from pathlib import Path
 from yt_dlp import YoutubeDL
 from collections import defaultdict, deque
 import sqlite3
+import yaml
 import os
-import logging
+import logging, logging.config
 
 DATA_ROOT_PATH = Path('/srv/hgst/ytdl/')
-USER_DB = Path(".database/user.db")
-PLAYLIST_DB = Path(".database/playlist.db")
+DB_PATH = Path(".database/ytdl-manager.db")
+
 
 os.makedirs(DATA_ROOT_PATH, exist_ok=True)
 opt = get_ydl_opts(root_dir=DATA_ROOT_PATH)
-app = FastAPI(title="YTDL Management Server", version="0.1", description="YTDL management service")
-logger = get_logger()
-logger.debug(f"Path {str(DATA_ROOT_PATH)} exists.")
+
+logger = None
+database = None
+celery = None
+
+
+async def lifespan(app: FastAPI):
+	# Initialize the logger
+	with open("logger_config.yaml", "r") as f:
+		config = yaml.safe_load(f)
+	logging.config.dictConfig(config)
+	logger = logging.getLogger(__name__)
+	logger.debug(f"Path {str(DATA_ROOT_PATH)} exists.")
+	# Initialize the database
+
+	# Initialize celery
+
+	# Initialize
+	pass
 
 try:
-	user_db = sqlite3.connect(USER_DB)
-	playlist_db = sqlite3.connect(PLAYLIST_DB)
-
+	conn = sqlite3.connect(DB_PATH)
 except Exception as e:
 	logger.error("Cannot connect to DB: Encountered Error", e)
+
+
+app = FastAPI(title="YTDL Management Server", version="0.1", description="YTDL management service")
 
 @app.get("/")
 async def docs():
