@@ -12,3 +12,4 @@ wheels/
 .env
 /.database/
 /*_log.txt
+**/*.rdb
