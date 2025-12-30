@@ -1,240 +1,304 @@
-from fastapi import FastAPI, HTTPException, Depends, Query, UploadFile, File, Form, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.responses import RedirectResponse
 from contextlib import asynccontextmanager
-from helpers import get_ydl_opts, init_db
 from pathlib import Path
-from yt_dlp import YoutubeDL
-from collections import defaultdict, deque
-import sqlite3
+import aiosqlite
 import yaml
 import os
-import logging, logging.config
+import logging
+import logging.config
+import shutil
+from yt_dlp import YoutubeDL
+from celery import Celery
 
-DATA_ROOT_PATH = Path('/srv/hgst/ytdl/')
-DB_PATH = Path(".database/ytdl-manager.db")
+from helpers import validate_playlist_url, extract_playlist_id, check_playlist_accessible
 
+
+cwd = Path(__file__).parent
+DATA_ROOT_PATH = Path("/srv/hgst/ytdl/")
+DB_PATH = cwd / ".database" / "database.db"
 
 os.makedirs(DATA_ROOT_PATH, exist_ok=True)
-opt = get_ydl_opts(root_dir=DATA_ROOT_PATH)
+os.makedirs(DB_PATH.parent, exist_ok=True)
 
-logger = None
-database = None
-celery = None
+# --------------------------------------------------
+# Logger setup
+# --------------------------------------------------
+
+def init_logger() -> logging.Logger:
+	try:
+		with open("logger_config.yaml", "r") as f:
+			config = yaml.safe_load(f)
+		logging.config.dictConfig(config)
+		logger = logging.getLogger("dev")
+		logger.debug("Logger configured")
+		return logger
+	except Exception as e:
+		logging.basicConfig(level=logging.INFO)
+		logger = logging.getLogger(__name__)
+		logger.error(f"Logger initialization failed: {e}")
+		return logger
 
 
+async def get_db():
+	async with aiosqlite.connect(DB_PATH) as db:
+		await db.execute("PRAGMA foreign_keys = ON")
+		db.row_factory = aiosqlite.Row
+		yield db
+
+
+@asynccontextmanager
 async def lifespan(app: FastAPI):
-	# Initialize the logger
-	with open("logger_config.yaml", "r") as f:
-		config = yaml.safe_load(f)
-	logging.config.dictConfig(config)
-	logger = logging.getLogger(__name__)
-	logger.debug(f"Path {str(DATA_ROOT_PATH)} exists.")
-	# Initialize the database
+	app.state.logger = init_logger()
+	logger = app.state.logger
 
-	# Initialize celery
+	# Check storage permissions
+	try:
+		test_dir = DATA_ROOT_PATH / "testing_write_permissions"
+		test_dir.mkdir()
+		shutil.rmtree(test_dir)
+		logger.info("Storage path is writable")
+	except Exception as e:
+		logger.error(f"Storage path not writable: {e}")
 
-	# Initialize
-	pass
+	# Initialize DB
+	async with aiosqlite.connect(DB_PATH) as db:
+		await db.execute("PRAGMA foreign_keys = ON")
 
-try:
-	conn = sqlite3.connect(DB_PATH)
-except Exception as e:
-	logger.error("Cannot connect to DB: Encountered Error", e)
+		await db.execute("""
+		CREATE TABLE IF NOT EXISTS user (
+			name TEXT PRIMARY KEY,
+			display_name TEXT NOT NULL,
+			admin INTEGER NOT NULL DEFAULT 0
+		)
+		""")
+
+		await db.execute("""
+		CREATE TABLE IF NOT EXISTS playlist (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			playlist_id TEXT NOT NULL,
+			name TEXT,
+			owner TEXT NOT NULL,
+			FOREIGN KEY(owner) REFERENCES user(name)
+		)
+		""")
+
+		await db.execute("""
+		CREATE UNIQUE INDEX IF NOT EXISTS idx_playlist_owner_pid
+		ON playlist(owner, playlist_id)
+		""")
+
+		await db.commit()
+		logger.info("Database ready")
+
+		cur = await db.execute("SELECT COUNT(*) FROM user")
+		user_count = (await cur.fetchone())
+		logger.info(f"User table row count: {user_count}")
+		
+		cur = await db.execute("SELECT COUNT(*) FROM playlist")
+		user_count = (await cur.fetchone())
+		logger.info(f"User table row count: {user_count}")
+
+	# Celery placeholder
+	try:
+		app.state.celery = Celery("ytdl")
+		logger.info("Celery initialized")
+	except Exception as e:
+		logger.error(f"Celery init failed: {e}")
+		app.state.celery = None
+
+	yield
+	logger.info("Application shutdown")
 
 
-app = FastAPI(title="YTDL Management Server", version="0.1", description="YTDL management service")
+app = FastAPI(
+	title="YTDL Management Server",
+	version="0.1",
+	description="YTDL management service",
+	lifespan=lifespan,
+)
+
 
 @app.get("/")
 async def docs():
 	return RedirectResponse(url="/docs", status_code=307)
 
+@app.post("/api/user/add")
+async def add_user(
+	name: str,
+	display_name: str,
+	admin: bool = False,
+	db: aiosqlite.Connection = Depends(get_db),
+):
+	logger = app.state.logger
 
-'''
-Endpoints: 
-- add_playlist: Simple interface, to add or remove playlists
-- admin: More complex interface to view and CRUD on playlists, configure yt-dlp features, manage cron job schedules
-- force_update: trigger an update with parameters
-- health_check: Healthcheck (200, 501 + error)
+	try:
+		await db.execute(
+			"INSERT INTO user (name, display_name, admin) VALUES (?, ?, ?)",
+			(name, display_name, int(admin)),
+		)
+		await db.commit()
+		return {
+			"status": "success",
+			"user": {
+				"name": name,
+				"display_name": display_name,
+				"admin": admin,
+			},
+		}
+	except aiosqlite.IntegrityError:
+		raise HTTPException(status_code=409, detail="User already exists")
+	except Exception:
+		logger.exception("Error adding user")
+		raise HTTPException(status_code=500, detail="Failed to add user")
 
-Cron jobs:
-- Scan from youtube playlists for changes, update database
-- Update local repository
-- Read and update remote repository
+@app.put("/api/playlist/add")
+async def add_playlist(
+	url: str,
+	owner: str,
+	name: str | None = None,
+	db: aiosqlite.Connection = Depends(get_db),
+):
+	logger = app.state.logger
 
-Integration:
-- yt-dlp
-- rsync
-- ntfy for notifications.
-'''
+	try:
+		if not validate_playlist_url(url):
+			raise HTTPException(status_code=400, detail="Invalid YouTube playlist URL")
+		  
+		cur = await db.execute(
+			"SELECT 1 FROM user WHERE name = ?",
+			(owner,),
+		)
+		if not await cur.fetchone():
+			raise HTTPException(status_code=404, detail="Owner not found")
+		  
+		try:
+			meta = check_playlist_accessible(url)
+			logger.debug(f"meta for {url}: {str(meta)}")
+		except RuntimeError as e:
+			raise HTTPException(
+				status_code=400,
+				detail=f"Playlist not accessible: {e}",
+			)
 
-"""
-# Interface & API Plan (v1)
+		playlist_id = meta["playlist_id"]
+		final_name = name or meta["title"]
 
-## Base URLs
-- Interface: `/`
-- API: `/api/`
+		try:
+			insert_cur = await db.execute(
+				"""
+				INSERT INTO playlist (playlist_id, name, owner)
+				VALUES (?, ?, ?)
+				""",
+				(playlist_id, final_name, owner),
+			)
+			await db.commit()
+		except aiosqlite.IntegrityError:
+			raise HTTPException(
+				status_code=409,
+				detail="Playlist already exists for this user",
+			)
 
-## Auth Model
-- Session cookie OR Bearer token (choose one per deploy; both supported).
-- Roles: "user", "admin".
-- All `/api/*` endpoints require auth; role gates noted below.
-- Optional: `Idempotency-Key` header for mutating endpoints that enqueue jobs.
+		return {
+			"status": "success",
+			"playlist": {
+				"id": insert_cur.lastrowid,
+				"playlist_id": playlist_id,
+				"name": final_name,
+				"video_count": meta["count"],
+			},
+		}
 
-## Interface
+	except HTTPException:
+		raise
+	except Exception:
+		logger.exception("Error adding playlist")
+		raise HTTPException(status_code=500, detail="Failed to add playlist")
 
-#### Login `/login` (UI)
-- Users/admins sign in; returns session cookie (HTTPOnly, SameSite=Lax/Strict).
 
-#### User `/user` (UI)
-- Manage own playlists; trigger own library update; view job status.
-- Calls:
-		- `GET  /api/playlist/get`
-		- `POST /api/playlist/add`
-		- `DELETE /api/playlist/remove`
-		- `POST /api/manage/library-update`       # scope=user (implicit)
-		- `GET  /api/manage/job-status`
+@app.get("/api/playlist/get_all")
+async def get_all_playlists(
+	owner: str,
+	include_all: bool = False,
+	db: aiosqlite.Connection = Depends(get_db),
+):
+	logger = app.state.logger
 
-#### Admin `/admin` (UI)
-- Manage all users & playlists; health; schedules; global library updates.
-- Calls:
-		- `GET  /api/manage/healthcheck`
-		- `GET  /api/playlist/get`
-		- `POST /api/playlist/add`
-		- `DELETE /api/playlist/remove`
-		- `POST /api/manage/library-update`       # scope=global (admin only)
-		- `GET  /api/user/get`
-		- `POST /api/user/add`
-		- `DELETE /api/user/remove`
-		- `GET  /api/manage/schedule`
-		- `GET  /api/manage/queue`
+	try:
+		cur = await db.execute(
+			"SELECT admin FROM user WHERE name = ?",
+			(owner,),
+		)
+		row = await cur.fetchone()
+		if not row:
+			raise HTTPException(status_code=404, detail="Owner not found")
 
-## API
+		is_admin = bool(row["admin"])
 
-### Management
-Endpoint group: `/api/manage`
+		if is_admin and include_all:
+			cur = await db.execute("""
+				SELECT
+					p.id,
+					p.playlist_id,
+					p.name,
+					p.owner,
+					u.display_name AS owner_display_name
+				FROM playlist p
+				JOIN user u ON p.owner = u.name
+			""")
+		else:
+			cur = await db.execute("""
+				SELECT
+					p.id,
+					p.playlist_id,
+					p.name,
+					p.owner,
+					u.display_name AS owner_display_name
+				FROM playlist p
+				JOIN user u ON p.owner = u.name
+				WHERE p.owner = ?
+			""", (owner,))
 
-- `GET /api/manage/healthcheck`
-	Description: Liveness/readiness and dependency check (yt-dlp, ffmpeg, rsync).
-	Params: none
-	Roles: user, admin
-	Responses:
-		200 { service: "ok", versions: { app, yt_dlp, ffmpeg, rsync }, last_jobs: {...} }
-		501 { error: { code: "DEP_MISSING", message, details } }
+		playlists = [dict(r) for r in await cur.fetchall()]
+		return {"items": playlists, "total": len(playlists)}
 
-- `GET /api/manage/job-status`
-	Description: Get status of a job.
-	Params:
-		- `id` (required): Job ID (UUID)
-	Roles: user (own jobs), admin (any)
-	Response: 200 { id, kind, status, created_at, started_at, finished_at, result?, error? }
+	except HTTPException:
+		raise
+	except Exception:
+		logger.exception("Error getting playlists")
+		raise HTTPException(status_code=500, detail="Failed to get playlists")
 
-- `GET /api/manage/queue`
-	Description: Inspect job queue.
-	Params:
-		- `limit` (optional, default 50)
-		- `fields` (optional, comma-separated; default all)
-	Roles: admin
-	Response: 200 { items: [...], total }
 
-- `GET /api/manage/schedule`
-	Description: List cron jobs (scanner/downloader/rsync/composite).
-	Params:
-		- `name` (optional): filter by job name
-		- `fields` (optional)
-	Roles: admin
-	Response: 200 { jobs: [...] }
+@app.get("/api/playlist/check_by_url")
+async def check_playlist_by_url(
+	url: str,
+	owner: str,
+	db: aiosqlite.Connection = Depends(get_db),
+):
+	logger = app.state.logger
 
-- `POST /api/manage/library-update`
-	Description: Enqueue a library update (scan/download/rsync pipeline).
-	Body:
-		- `user`  (required if scope=user by admin; implicit as caller if role=user)
-		- `scope` (required): "user" | "global"  (global requires admin)
-		- `options` (optional): { full_rescan?: bool, fast?: bool, dry_run?: bool }
-	Headers:
-		- `Idempotency-Key` (optional)
-	Roles: user (scope=user), admin (user/global)
-	Responses:
-		202 { job_id }
-		409 { error: { code: "JOB_DUPLICATE", ... } }  # if debounced without allow_concurrent
+	try:
+		if not validate_playlist_url(url):
+			raise HTTPException(status_code=400, detail="Invalid URL")
 
-### Playlist Management
-Endpoint group: `/api/playlist`
+		playlist_id = extract_playlist_id(url)
 
-- `GET /api/playlist/get`
-	Description: Get playlists.
-	Params:
-		- `id` (optional): single playlist
-		- `owner` (optional, admin only): filter by user ID
-		- `page`, `per_page` (optional)
-	Roles: user (own), admin (any)
-	Response: 200 { items: [...], page, per_page, total }
+		cur = await db.execute(
+			"""
+			SELECT id, playlist_id, name
+			FROM playlist
+			WHERE playlist_id = ? AND owner = ?
+			""",
+			(playlist_id, owner),
+		)
+		row = await cur.fetchone()
 
-- `POST /api/playlist/add`
-	Description: Add a playlist for current user (or target user if admin).
-	Body:
-		- `playlist_url` (required)
-		- `title` (optional)
-		- `tags` (optional list)
-		- `policy` (optional): { audio_only?, embed_thumbnail?, format?, write_metadata?, archive? }
-		- `owner` (admin only, optional): user ID
-	Roles: user (own), admin (any)
-	Responses:
-		201 { id, playlist_url, owner, enabled: true }
-		409 { error: { code: "ALREADY_EXISTS", ... } }
+		if row:
+			return {"exists": True, "playlist": dict(row)}
+		return {"exists": False}
 
-- `DELETE /api/playlist/remove`
-	Description: Remove or disable a playlist.
-	Params:
-		- `id` (required) OR `ids` (comma-separated)
-		- `hard` (optional, default false): hard delete vs soft disable
-	Roles: user (own), admin (any)
-	Response: 204
-
-### User Management
-Endpoint group: `/api/user`
-
-- `GET /api/user/get`
-	Description: List or fetch users.
-	Params:
-		- `id` (optional)
-		- `page`, `per_page` (optional)
-	Roles: admin
-	Response: 200 { items: [...], page, per_page, total }
-
-- `POST /api/user/add`
-	Description: Create a user.
-	Body:
-		- `email` (required)
-		- `role`  (optional; default "user")
-		- `password` or provisioning method (depending on auth)
-	Roles: admin
-	Response: 201 { id, email, role }
-
-- `DELETE /api/user/remove`
-	Description: Remove user(s).
-	Params:
-		- `id` (required) OR `ids` (comma-separated)
-	Roles: admin
-	Response: 204
-
-### Notifications & Integrations (optional surfaces)
-- Telegram bridge (server-side): emit job lifecycle messages.
-	Config at admin level; no public endpoint required.
-- ntfy support can be toggled in config (admin UI) if implemented.
-
-## Conventions
-
-- Naming: use either kebab-case or snake_case in paths; this plan uses kebab in actions and underscores in bodies; keep paths consistent (e.g., prefer `library-update` in URL).
-- Errors (uniform):
-	{ "error": { "code": "STRING_CODE", "message": "Human readable", "details": {...} } }
-- Pagination for list endpoints: `page`, `per_page`; response includes `total`.
-- Security:
-	- Auth required on all API routes.
-	- Role checks server-side.
-	- Validate playlist URL is canonical YouTube playlist.
-	- Constrain filesystem and sanitize rsync/ytdlp args (allowlist).
-- Observability:
-	- Each job has `logs_url` if you expose logs (redacted).
-	- Healthcheck returns dependency versions.
-"""
+	except HTTPException:
+		raise
+	except Exception:
+		logger.exception("Error checking playlist")
+		raise HTTPException(status_code=500, detail="Failed to check playlist")

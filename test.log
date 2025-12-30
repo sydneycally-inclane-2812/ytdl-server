@@ -1,0 +1,272 @@
+2025-12-30 07:39:30,282 main DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 07:39:30,285 main DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 07:40:04,213 main DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 07:40:06,026 main DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 07:40:06,027 main DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 07:40:16,499 main DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 07:40:17,267 main DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 07:40:17,268 main DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 07:41:19,025 main DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 07:41:47,521 main DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 07:41:47,521 main DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 10:27:15,737 main DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 10:27:16,431 dev DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 10:27:16,431 dev DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 10:27:17,174 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 10:27:17,916 dev DEBUG [main.py:lifespan]: Path /srv/hgst/ytdl exists.
+2025-12-30 10:27:17,916 dev DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 10:38:38,812 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 10:38:39,542 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 10:38:41,334 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 10:38:41,334 dev DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 10:39:06,802 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 10:39:07,523 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 10:39:07,524 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 10:39:07,524 dev DEBUG [main.py:lifespan]: Path .database/ytdl-manager.db exists
+2025-12-30 10:39:07,568 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:12:30,565 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:12:31,296 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:12:31,296 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:12:31,296 dev ERROR [main.py:lifespan]: Cannot connect to DB: name 'MANAGE_DB_PATH' is not defined
+2025-12-30 11:12:31,337 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:34:20,560 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:34:20,560 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:34:20,606 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:34:22,290 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:34:22,290 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:34:22,330 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:35:23,485 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:35:23,486 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:35:36,166 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:35:36,166 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:36:00,835 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:36:00,835 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:37:40,132 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:37:40,132 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:37:40,161 dev INFO [main.py:lifespan]: Created new database and tables.
+2025-12-30 11:37:40,200 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:37:48,723 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:37:49,318 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:37:49,318 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:37:49,319 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:37:49,359 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:38:49,883 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:38:50,455 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:38:50,456 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:38:50,456 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:38:50,496 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:38:50,496 dev DEBUG [main.py:lifespan]: All systems functional.
+2025-12-30 11:40:48,028 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:40:48,635 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:40:48,635 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:40:48,636 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:40:48,676 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:40:48,676 dev DEBUG [main.py:lifespan]: All systems go.
+2025-12-30 11:40:52,386 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:40:52,954 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:40:52,954 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:40:52,955 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:40:52,994 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:40:52,995 dev DEBUG [main.py:lifespan]: All systems go.
+2025-12-30 11:43:50,455 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:43:51,089 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:43:51,089 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:43:51,089 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:43:51,090 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:44:55,981 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:44:56,589 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:44:56,590 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:44:56,590 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:44:56,591 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:45:04,414 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:45:05,029 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:45:05,029 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:45:05,029 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:45:05,030 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:47:30,664 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:47:31,322 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:47:31,323 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:47:31,323 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:47:31,325 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:52:29,912 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:52:30,914 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:52:30,914 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:52:30,915 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:52:30,916 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:52:57,788 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:52:58,410 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:52:58,410 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:52:58,410 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:52:58,411 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:55:06,648 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:55:07,694 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:55:07,695 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:55:07,695 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:55:07,696 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 11:55:18,926 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 11:55:19,545 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 11:55:19,546 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 11:55:19,546 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 11:55:19,547 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 12:05:04,039 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 12:05:05,143 dev DEBUG [main.py:lifespan]: Logger configurated
+2025-12-30 12:05:05,143 dev INFO [main.py:lifespan]: Root database writable by server
+2025-12-30 12:05:05,144 dev INFO [main.py:lifespan]: Database exists and connected.
+2025-12-30 12:05:05,145 dev DEBUG [main.py:lifespan]: Celery initialized.
+2025-12-30 12:09:36,260 dev DEBUG [main.py:lifespan]: Database connection closed.
+2025-12-30 12:09:36,834 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:09:36,835 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:09:36,836 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:09:36,838 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:17:33,110 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:17:33,682 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:17:33,683 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:17:33,696 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:17:33,697 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:20:01,415 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:20:02,029 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:20:02,029 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:20:02,031 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:20:02,032 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:20:15,368 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:20:15,969 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:20:15,969 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:20:15,971 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:20:15,973 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:21:51,122 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:21:51,699 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:21:51,699 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:21:51,700 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:21:51,702 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:22:15,584 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:22:16,149 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:22:16,150 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:22:16,151 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:22:16,153 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:23:40,904 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:23:41,459 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:23:41,460 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:23:41,461 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:23:41,462 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:23:54,296 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:23:54,908 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:23:54,909 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:23:54,910 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:23:54,912 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:24:01,329 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:24:01,886 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:24:01,886 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:24:01,888 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:24:01,889 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:27:15,358 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:27:15,919 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:27:15,919 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:27:15,920 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:27:15,922 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:27:18,028 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:27:18,602 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:27:18,602 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:27:18,604 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:27:18,605 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:34:12,343 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:34:12,912 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:34:12,912 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:34:18,421 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:34:18,421 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:34:18,452 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:34:18,453 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:34:38,303 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:34:38,867 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:34:38,867 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:34:38,869 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:34:38,870 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:39:48,396 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:40:03,576 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:40:03,576 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:40:03,594 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:40:03,595 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:40:08,310 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:40:08,880 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:40:08,880 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:40:08,882 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:40:08,883 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:40:27,631 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:40:29,245 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:40:29,246 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:40:29,295 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:40:29,296 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:50:39,621 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:50:40,243 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:50:40,244 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:50:40,245 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:50:40,247 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:51:32,198 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:51:32,815 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:51:32,815 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:51:32,817 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:51:32,818 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:51:54,775 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:51:56,506 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:51:56,506 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:51:56,525 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:51:56,526 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:54:55,302 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:54:55,944 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:54:55,944 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:54:55,946 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:54:55,947 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 12:55:12,153 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 12:55:12,783 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 12:55:12,784 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 12:55:12,827 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 12:55:12,828 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:02:19,863 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:02:20,484 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:02:20,485 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:02:20,487 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:02:20,488 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:04:15,700 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:04:16,317 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:04:16,317 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:04:16,319 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:04:16,320 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:04:26,937 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=Z2icQoPrX9M&list=PLHCOl0MkeyVm2lfMfqEfgXTo2RIiN6HXebU: {'playlist_id': 'Z2icQoPrX9M', 'title': None, 'count': None}
+2025-12-30 13:04:40,876 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:04:41,492 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:04:41,492 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:04:41,527 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:04:41,528 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:05:21,232 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=Z2icQoPrX9M&list=PLHCOl0MkeyVm2lfMfqEXTo2RIiN6HXebU: {'playlist_id': 'PLHCOl0MkeyVm2lfMfqEXTo2RIiN6HXebU', 'title': 'testing', 'count': None}
+2025-12-30 13:06:48,448 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=Z2icQoPrX9M&list=PLHCOl0MkeyVm2lfMfqEXTo2RIiN6HXebU: {'playlist_id': 'PLHCOl0MkeyVm2lfMfqEXTo2RIiN6HXebU', 'title': 'testing', 'count': None}
+2025-12-30 13:07:55,436 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=hFifYa5PcH8&list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880: {'playlist_id': 'PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'title': 'Clair Obscur: Expedition 33', 'count': None}
+2025-12-30 13:09:02,524 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:09:03,130 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:09:03,131 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:09:03,133 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:09:03,134 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:09:17,231 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=hFifYa5PcH8&list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880: {'ie_key': 'YoutubeTab', 'id': 'PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'title': 'Clair Obscur: Expedition 33', '_type': 'url', 'url': 'https://www.youtube.com/playlist?list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'webpage_url': 'https://www.youtube.com/watch?v=hFifYa5PcH8&list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'original_url': 'https://www.youtube.com/watch?v=hFifYa5PcH8&list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'webpage_url_basename': 'watch', 'webpage_url_domain': 'youtube.com', 'extractor': 'youtube:tab', 'extractor_key': 'YoutubeTab'}
+2025-12-30 13:09:17,232 dev ERROR [main.py:add_playlist]: Error adding playlist
+Traceback (most recent call last):
+  File "/root/ytdl-server/main.py", line 176, in add_playlist
+    playlist_id = meta["playlist_id"]
+                  ~~~~^^^^^^^^^^^^^^^
+KeyError: 'playlist_id'
+2025-12-30 13:12:45,263 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:12:45,867 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:12:45,868 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:12:45,869 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:12:45,871 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:16:56,107 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:16:56,741 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:16:56,741 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:16:56,743 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:16:56,743 dev INFO [main.py:lifespan]: User table row count: 1
+2025-12-30 13:16:56,744 dev INFO [main.py:lifespan]: User table row count: 2
+2025-12-30 13:16:56,745 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:17:34,755 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:17:35,375 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:17:35,375 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:17:35,377 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:17:35,378 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:17:35,378 dev INFO [main.py:lifespan]: User table row count: (2,)
+2025-12-30 13:17:35,379 dev INFO [main.py:lifespan]: Celery initialized
