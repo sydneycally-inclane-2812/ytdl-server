@@ -1,0 +1,4 @@
+- [ ] Add proper redis database trigger on startup/shutdown
+- [ ] Implement Celery worker structure and check queue schedule/trigger.
+- [ ] Implement correct file structure
+- [ ] Implement mounting file structure over to the other server. Sound data should flow alright between the devices without much issues.
