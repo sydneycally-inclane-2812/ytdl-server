@@ -270,3 +270,79 @@ KeyError: 'playlist_id'
 2025-12-30 13:17:35,378 dev INFO [main.py:lifespan]: User table row count: (1,)
 2025-12-30 13:17:35,378 dev INFO [main.py:lifespan]: User table row count: (2,)
 2025-12-30 13:17:35,379 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:20:47,673 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:20:48,303 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:20:48,304 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:20:48,305 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:20:48,306 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:20:48,306 dev INFO [main.py:lifespan]: Playlist table row count: (2,)
+2025-12-30 13:20:48,308 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:27:22,755 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:27:23,380 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:27:23,381 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:27:23,382 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:27:23,384 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:27:58,379 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:27:58,995 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:27:58,995 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:27:58,997 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:27:58,998 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:28:23,972 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:28:24,588 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:28:24,589 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:28:24,591 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:28:24,592 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:29:04,897 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:29:05,508 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:29:05,508 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:29:05,510 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:29:05,511 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:29:19,952 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:29:20,556 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:29:20,556 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:29:20,589 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:29:20,590 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:29:58,301 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:29:58,911 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:29:58,911 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:29:58,913 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:29:58,913 dev INFO [main.py:lifespan]: Playlist table row count: (0,)
+2025-12-30 13:29:58,914 dev INFO [main.py:lifespan]: User table row count: (0,)
+2025-12-30 13:29:58,915 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:37:48,026 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=hFifYa5PcH8&list=PL7grM3iHhuTJwC7JY36fwHFza6WwHS880: {'playlist_id': 'PL7grM3iHhuTJwC7JY36fwHFza6WwHS880', 'title': 'Clair Obscur: Expedition 33', 'count': None}
+2025-12-30 13:39:08,739 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:39:09,540 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:39:09,541 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:39:09,543 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:39:09,543 dev INFO [main.py:lifespan]: Playlist table row count: (1,)
+2025-12-30 13:39:09,544 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:39:09,546 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:39:59,082 dev DEBUG [main.py:add_playlist]: meta for https://www.youtube.com/watch?v=XjNlP3LrFiY&list=RDXjNlP3LrFiY: {'playlist_id': 'RDXjNlP3LrFiY', 'title': 'Mix - bbno$ - gigolo (starring Ethan Nestor)', 'count': None}
+2025-12-30 13:45:37,269 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:45:38,778 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:45:38,779 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:45:38,781 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:45:38,781 dev INFO [main.py:lifespan]: Playlist table row count: (2,)
+2025-12-30 13:45:38,782 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:45:38,807 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:46:58,135 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:46:58,758 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:46:58,759 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:46:58,760 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:46:58,761 dev INFO [main.py:lifespan]: Playlist table row count: (2,)
+2025-12-30 13:46:58,761 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:46:58,766 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:48:41,238 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:48:42,439 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:48:42,442 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:48:42,449 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:48:42,450 dev INFO [main.py:lifespan]: Playlist table row count: (2,)
+2025-12-30 13:48:42,453 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:48:42,466 dev INFO [main.py:lifespan]: Celery initialized
+2025-12-30 13:48:48,487 dev INFO [main.py:lifespan]: Application shutdown
+2025-12-30 13:48:49,663 dev DEBUG [main.py:init_logger]: Logger configured
+2025-12-30 13:48:49,663 dev INFO [main.py:lifespan]: Storage path is writable
+2025-12-30 13:48:49,665 dev INFO [main.py:lifespan]: Database ready
+2025-12-30 13:48:49,665 dev INFO [main.py:lifespan]: Playlist table row count: (2,)
+2025-12-30 13:48:49,666 dev INFO [main.py:lifespan]: User table row count: (1,)
+2025-12-30 13:48:49,673 dev INFO [main.py:lifespan]: Celery initialized
