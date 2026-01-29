@@ -13,3 +13,4 @@ wheels/
 /.database/
 /*_log.txt
 **/*.rdb
+**/*.log

@@ -151,6 +151,7 @@ async def add_user(
 				await db.commit()
 			else:
 				raise HTTPException(status_code=409, detail="User already exists")
+		logger.debug(f"Added user {name} as {'admin' if admin else 'non-admin'}")
 		return {
 			"status": "success",
 			"user": {
@@ -163,7 +164,7 @@ async def add_user(
 	except HTTPException:
 		raise
 	except Exception:
-		logger.exception("Error adding user")
+		logger.error("Error adding user")
 		raise HTTPException(status_code=500, detail="Failed to add user")
 
 @app.delete("/api/user/deactivate/{name}")
