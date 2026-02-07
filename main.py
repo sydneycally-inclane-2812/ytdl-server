@@ -10,8 +10,9 @@ import logging.config
 import shutil
 from yt_dlp import YoutubeDL
 from celery import Celery
+import dotenv
 
-from helpers import validate_playlist_url, extract_playlist_id, check_playlist_accessible
+from helpers import validate_true_playlist_url, check_playlist_accessible
 
 
 cwd = Path(__file__).parent
@@ -36,19 +37,17 @@ def init_logger() -> logging.Logger:
 		logger.error(f"Logger initialization failed: {e}")
 		return logger
 
-
 async def get_db():
 	async with aiosqlite.connect(DB_PATH) as db:
 		await db.execute("PRAGMA foreign_keys = ON")
 		db.row_factory = aiosqlite.Row
 		yield db
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
 	app.state.logger = init_logger()
 	logger = app.state.logger
-
+	dotenv.load_dotenv()
 	# Check storage permissions
 	try:
 		test_dir = DATA_ROOT_PATH / "testing_write_permissions"
@@ -92,11 +91,11 @@ async def lifespan(app: FastAPI):
 		
 		cur = await db.execute("SELECT COUNT(*) FROM playlist")
 		user_count = (await cur.fetchone())
-		logger.info(f"Playlist table row count: {user_count}")
+		logger.info(f"Playlist table row count: {user_count[0]}")
 
 		cur = await db.execute("SELECT COUNT(*) FROM user")
 		user_count = (await cur.fetchone())
-		logger.info(f"User table row count: {user_count}")
+		logger.info(f"User table row count: {user_count[0]}")
 
 	# Celery placeholder
 	try:
@@ -109,28 +108,44 @@ async def lifespan(app: FastAPI):
 	yield
 	logger.info("Application shutdown")
 
-
 app = FastAPI(
 	title="YTDL Management Server",
 	version="0.1",
 	description="YTDL management service",
 	lifespan=lifespan,
 )
-
 @app.get("/")
 async def docs():
 	return RedirectResponse(url="/docs", status_code=307)
-
 
 @app.post("/api/user/add")
 async def add_user(
 	name: str,
 	display_name: str,
+	passkey: str,
 	admin: bool = False,
 	db: aiosqlite.Connection = Depends(get_db),
-):
+) -> str:
+	'''
+	Creates a new user in the database.
+
+		name: unique identifier for the user
+
+		display_name: name that is used in the UI
+
+		passkey: passkey for su management
+
+		admin: whether the user is an admin or not
+	
+	Returns:
+
+		str: json response
+	'''
 	logger = app.state.logger
+ 
 	try:
+		if passkey != os.getenv("PASSKEY"):
+			raise HTTPException(status_code=401, detail="Invalid credentials")
 		# Try insert, reactivate if inactive
 		try:
 			await db.execute(
@@ -167,10 +182,18 @@ async def add_user(
 		logger.error("Error adding user")
 		raise HTTPException(status_code=500, detail="Failed to add user")
 
-@app.delete("/api/user/deactivate/{name}")
-async def deactivate_user(name: str, db: aiosqlite.Connection = Depends(get_db)):
+@app.delete("/api/user/deactivate")
+async def deactivate_user(	
+	name: str,
+	passkey: str,
+	db: aiosqlite.Connection = Depends(get_db)) -> str:
+	'''
+	Marks the user as deactivated in the database.
+	'''
 	logger = app.state.logger
 	try:
+		if passkey != os.getenv("PASSKEY"):
+			raise HTTPException(status_code=401, detail="Invalid credentials")
 		cur = await db.execute(
 			"UPDATE user SET active = 0 WHERE name = ? AND active = 1", (name,)
 		)
@@ -182,7 +205,6 @@ async def deactivate_user(name: str, db: aiosqlite.Connection = Depends(get_db))
 		logger.exception("Error deactivating user")
 		raise HTTPException(status_code=500, detail="Failed to deactivate user")
 
-
 @app.put("/api/playlist/add")
 async def add_playlist(
 	url: str,
@@ -192,8 +214,10 @@ async def add_playlist(
 ):
 	logger = app.state.logger
 	try:
-		if not validate_playlist_url(url):
-			raise HTTPException(status_code=400, detail="Invalid YouTube playlist URL")
+		try:
+			url = validate_true_playlist_url(url)
+		except ValueError as exc:
+			raise HTTPException(status_code=400, detail=str(exc))
 
 		# Ensure owner exists and active
 		cur = await db.execute(
@@ -258,6 +282,9 @@ async def deactivate_playlist(
 	owner: str,
 	db: aiosqlite.Connection = Depends(get_db),
 ):
+	'''
+	Deactivate a playlist by ID.
+	'''
 	logger = app.state.logger
 	try:
 		cur = await db.execute(
@@ -281,6 +308,12 @@ async def get_all_playlists(
 	include_all: bool = False,
 	db: aiosqlite.Connection = Depends(get_db),
 ):
+	"""
+	Return playlists visible to the requesting owner.
+
+	Admins may request all playlists with include_all; non-admins only see
+	active playlists they own. The response includes item count and metadata.
+	"""
 	logger = app.state.logger
 	try:
 		cur = await db.execute(
@@ -313,30 +346,59 @@ async def get_all_playlists(
 		logger.exception("Error getting playlists")
 		raise HTTPException(status_code=500, detail="Failed to get playlists")
 
-@app.get("/api/playlist/check_by_url")
-async def check_playlist_by_url(
-	url: str,
-	owner: str,
-	db: aiosqlite.Connection = Depends(get_db),
-):
+@app.get("/api/playlist/check_access")
+async def check_access(url: str):
+	"""
+	Check if yt-dlp can access a playlist and return basic stats.
+	"""
 	logger = app.state.logger
 	try:
-		if not validate_playlist_url(url):
-			raise HTTPException(status_code=400, detail="Invalid URL")
+		try:
+			url = validate_true_playlist_url(url)
+		except ValueError as exc:
+			raise HTTPException(status_code=400, detail=str(exc))
 
-		playlist_id = extract_playlist_id(url)
-
-		cur = await db.execute(
-			"SELECT id, playlist_id, name FROM playlist WHERE playlist_id = ? AND owner = ? AND active = 1",
-			(playlist_id, owner),
-		)
-		row = await cur.fetchone()
-
-		if row:
-			return {"exists": True, "playlist": dict(row)}
-		return {"exists": False}
+		meta = check_playlist_accessible(url)
+		return {
+			"status": "ok",
+			"playlist": meta,
+		}
 	except HTTPException:
 		raise
 	except Exception:
-		logger.exception("Error checking playlist")
-		raise HTTPException(status_code=500, detail="Failed to check playlist")
+		logger.exception("Error checking playlist access")
+		raise HTTPException(status_code=500, detail="Failed to check playlist access")
+		
+# @app.get("/api/playlist/check_by_url")
+# async def check_playlist_by_url(
+# 	url: str,
+# 	owner: str,
+# 	db: aiosqlite.Connection = Depends(get_db),
+# ):
+# 	"""
+# 	Check whether the given playlist URL already exists for the owner.
+
+# 	Validates the URL, extracts the playlist ID, and returns a boolean
+# 	with optional playlist metadata if a matching active playlist is found.
+# 	"""
+# 	logger = app.state.logger
+# 	try:
+# 		if not validate_playlist_url(url):
+# 			raise HTTPException(status_code=400, detail="Invalid URL")
+
+# 		playlist_id = extract_playlist_id(url)
+
+# 		cur = await db.execute(
+# 			"SELECT id, playlist_id, name FROM playlist WHERE playlist_id = ? AND owner = ? AND active = 1",
+# 			(playlist_id, owner),
+# 		)
+# 		row = await cur.fetchone()
+
+# 		if row:
+# 			return {"exists": True, "playlist": dict(row)}
+# 		return {"exists": False}
+# 	except HTTPException:
+# 		raise
+# 	except Exception:
+# 		logger.exception("Error checking playlist")
+# 		raise HTTPException(status_code=500, detail="Failed to check playlist")

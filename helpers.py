@@ -2,10 +2,13 @@
 # Helper functions for initialization
 import logging
 import os
+import re
 import sqlite3
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 from fastapi import HTTPException
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 	"""
@@ -53,28 +56,43 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 	}
 	return ydl_opts
 
-def validate_playlist_url(url: str) -> bool:
-	try:
-		parsed = urlparse(url)
-		if parsed.scheme not in ("http", "https"):
-			return False
-		if "youtube.com" not in parsed.netloc:
-			return False
-		return "list" in parse_qs(parsed.query)
-	except Exception:
-		return False
+# def validate_playlist_url(url: str) -> bool:
+# 	try:
+# 		parsed = urlparse(url)
+# 		if parsed.scheme not in ("http", "https"):
+# 			return False
+# 		if "youtube.com" not in parsed.netloc:
+# 			return False
+# 		return "list" in parse_qs(parsed.query)
+# 	except Exception:
+# 		return False
 
 
-def extract_playlist_id(url: str) -> str | None:
-	try:
-		parsed = urlparse(url)
-		return parse_qs(parsed.query).get("list", [None])[0]
-	except Exception:
-		return None
+# def extract_playlist_id(url: str) -> str | None:
+# 	try:
+# 		parsed = urlparse(url)
+# 		return parse_qs(parsed.query).get("list", [None])[0]
+# 	except Exception:
+# 		return None
 
+def validate_true_playlist_url(url: str) -> str:
+	"""
+	Verify a playlist URL and return a normalized URL. This standardizes the input and output.
 
-from yt_dlp import YoutubeDL
-from yt_dlp.utils import DownloadError
+	Scheme is optional, but the playlist must follow:
+	www.youtube.com/playlist?list=<PLAYLIST_ID>
+	"""
+	pattern = re.compile(
+		r"^(?:https?://)?(?:www\.)?youtube\.com/playlist\?"
+		r"(?:.*&)?list=([A-Za-z0-9_-]+)(?:&.*)?$",
+		re.IGNORECASE,
+	)
+	match = pattern.match(url.strip())
+	if not match:
+		raise ValueError("Invalid YouTube playlist URL")
+	playlist_id = match.group(1)
+	return f"https://www.youtube.com/playlist?list={playlist_id}"
+
 
 def check_playlist_accessible(url: str) -> dict:
 	"""
