@@ -8,4 +8,3 @@ trap "kill $UVICORN_PID $CELERY_PID 2>/dev/null" EXIT
 wait -n
 exit $?
 
-

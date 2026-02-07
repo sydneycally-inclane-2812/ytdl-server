@@ -13,6 +13,7 @@ from celery import Celery
 import dotenv
 
 from helpers import validate_true_playlist_url, check_playlist_accessible
+from celery_app import scan
 
 
 cwd = Path(__file__).parent
@@ -48,6 +49,8 @@ async def lifespan(app: FastAPI):
 	app.state.logger = init_logger()
 	logger = app.state.logger
 	dotenv.load_dotenv()
+	if os.getenv("PASSKEY"):
+		logger.info(".env loaded")
 	# Check storage permissions
 	try:
 		test_dir = DATA_ROOT_PATH / "testing_write_permissions"
@@ -114,6 +117,7 @@ app = FastAPI(
 	description="YTDL management service",
 	lifespan=lifespan,
 )
+
 @app.get("/")
 async def docs():
 	return RedirectResponse(url="/docs", status_code=307)
@@ -125,7 +129,7 @@ async def add_user(
 	passkey: str,
 	admin: bool = False,
 	db: aiosqlite.Connection = Depends(get_db),
-) -> str:
+):
 	'''
 	Creates a new user in the database.
 
@@ -186,7 +190,7 @@ async def add_user(
 async def deactivate_user(	
 	name: str,
 	passkey: str,
-	db: aiosqlite.Connection = Depends(get_db)) -> str:
+	db: aiosqlite.Connection = Depends(get_db)):
 	'''
 	Marks the user as deactivated in the database.
 	'''
@@ -368,6 +372,23 @@ async def check_access(url: str):
 	except Exception:
 		logger.exception("Error checking playlist access")
 		raise HTTPException(status_code=500, detail="Failed to check playlist access")
+
+@app.post("/api/tasks/scan")
+async def trigger_scan():
+	"""
+	Trigger a scan across all active playlists.
+	"""
+	logger = app.state.logger
+	try:
+		task = scan.delay()
+		logger.info("Queued scan task %s", task.id)
+		return {
+			"status": "queued",
+			"task_id": task.id,
+		}
+	except Exception:
+		logger.exception("Error triggering scan")
+		raise HTTPException(status_code=500, detail="Failed to trigger scan")
 		
 # @app.get("/api/playlist/check_by_url")
 # async def check_playlist_by_url(

@@ -33,27 +33,38 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 
 	ydl_opts = {
 		'format': 'bestaudio/best',
-		'postprocessors': [
-			{
-				'key': 'FFmpegExtractAudio',
-				'preferredcodec': 'mp3',
-				'preferredquality': '192',
-			},
-			{
-				'key': 'EmbedThumbnail',
-			},
-			{
-				'key': 'FFmpegMetadata',
-			}
-		],
-		'writethumbnail': True,
 		'outtmpl': outtmpl,
-		# add ffmpeg args to write a comment tag containing video id and playlist id
-		# ytdlp will expand %(id)s and %(playlist_id)s when running postprocessors
-		'postprocessor_args': [
-			'-metadata', 'comment=youtube_id=%(id)s; playlist_id=%(playlist_id)s'
-		],
+
+		# Most important for current YouTube/SABR issues
+		'extractor_args': {
+			'youtube': {
+				'player_client': ['default', '-android_sdkless'],
+			}
+		},
+
+		# Playlist reliability
+		'ignoreerrors': True,
+		'retries': 10,
+		'fragment_retries': 10,
+		'continuedl': True,
+		'concurrent_fragment_downloads': 1,
+		'sleep_interval': 1,
+		'max_sleep_interval': 5,
+
+		'postprocessors': [{
+			'key': 'FFmpegExtractAudio',
+			'preferredcodec': 'mp3',
+			'preferredquality': '192',
+		}],
+
+		# Prefer mapping args to the specific PP
+		'postprocessor_args': {
+			'FFmpegExtractAudio': [
+				'-metadata', 'comment=youtube_id=%(id)s; playlist_id=%(playlist_id)s'
+			]
+		},
 	}
+
 	return ydl_opts
 
 # def validate_playlist_url(url: str) -> bool:
@@ -91,6 +102,8 @@ def validate_true_playlist_url(url: str) -> str:
 	if not match:
 		raise ValueError("Invalid YouTube playlist URL")
 	playlist_id = match.group(1)
+	if len(playlist_id) != 34:
+		raise ValueError("Invalid Youtube ID length")
 	return f"https://www.youtube.com/playlist?list={playlist_id}"
 
 
