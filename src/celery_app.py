@@ -238,7 +238,7 @@ def retag_album_metadata(playlist_folder: Path, album_name: str | None = None) -
 				"-metadata", f"album={album_name}",
 				"-codec", "copy", "-y",
 				temp_path
-			], capture_output=True, text=True, check=True)
+			], capture_output=True, text=True, encoding='utf-8', errors='replace', check=True)
 			
 			# Replace original with updated file
 			mp3_path.unlink()
