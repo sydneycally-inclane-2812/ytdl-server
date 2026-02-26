@@ -10,7 +10,7 @@ from fastapi import HTTPException
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
+def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True):
 	"""
 	Returns a ytdlp opt dictionary for a specified root folder. Root_dir must be a Path object.
 	If playlist_folder is True, files for a playlist will be placed into a subfolder named after the playlist.
@@ -31,8 +31,8 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 	else:
 		outtmpl = str(root_dir / '%(title)s.%(ext)s')
 
-	ydl_opts = {
-		'format': 'bestaudio/best',
+	ytdl_opts = {
+		'format': 'bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best',
 		'outtmpl': outtmpl,
 
 		# Most important for current YouTube/SABR issues
@@ -44,12 +44,14 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 
 		# Playlist reliability
 		'ignoreerrors': True,
-		'retries': 10,
-		'fragment_retries': 10,
+		'retries': 5,
+		'fragment_retries': 20,
 		'continuedl': True,
 		'concurrent_fragment_downloads': 1,
-		'sleep_interval': 1,
-		'max_sleep_interval': 5,
+		'sleep_interval': 5,
+		'max_sleep_interval': 10,
+		'cookiefile': 'cookies.txt',
+		'writeinfojson': True,
 
 		'postprocessors': [{
 			'key': 'FFmpegExtractAudio',
@@ -65,26 +67,7 @@ def get_ydl_opts(root_dir: Path, playlist_folder: bool = True):
 		},
 	}
 
-	return ydl_opts
-
-# def validate_playlist_url(url: str) -> bool:
-# 	try:
-# 		parsed = urlparse(url)
-# 		if parsed.scheme not in ("http", "https"):
-# 			return False
-# 		if "youtube.com" not in parsed.netloc:
-# 			return False
-# 		return "list" in parse_qs(parsed.query)
-# 	except Exception:
-# 		return False
-
-
-# def extract_playlist_id(url: str) -> str | None:
-# 	try:
-# 		parsed = urlparse(url)
-# 		return parse_qs(parsed.query).get("list", [None])[0]
-# 	except Exception:
-# 		return None
+	return ytdl_opts
 
 def validate_true_playlist_url(url: str) -> str:
 	"""
@@ -100,12 +83,11 @@ def validate_true_playlist_url(url: str) -> str:
 	)
 	match = pattern.match(url.strip())
 	if not match:
-		raise ValueError("Invalid YouTube playlist URL")
+		raise ValueError(f"Invalid YouTube playlist URL {url}")
 	playlist_id = match.group(1)
 	if len(playlist_id) != 34:
-		raise ValueError("Invalid Youtube ID length")
+		raise ValueError(f"Invalid Youtube ID length {len(playlist_id)}")
 	return f"https://www.youtube.com/playlist?list={playlist_id}"
-
 
 def check_playlist_accessible(url: str) -> dict:
 	"""

@@ -1,0 +1,7 @@
+{
+	"default": {
+		"root_dir": "/srv/hgst/ytdl",
+		"database_path": ".database/database.db"
+	},
+	"current": "default"
+}

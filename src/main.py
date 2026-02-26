@@ -11,22 +11,23 @@ import shutil
 from yt_dlp import YoutubeDL
 from celery import Celery
 import dotenv
-
+import json
 from helpers import validate_true_playlist_url, check_playlist_accessible
 from celery_app import scan
 
+homedir = Path(__file__).parent.parent.resolve()
+with open(homedir / "config" / "app_config.json", "r") as f:
+	config = json.load(f)
 
-cwd = Path(__file__).parent
-
-DATA_ROOT_PATH = Path("/srv/hgst/ytdl/")
-DB_PATH = cwd / ".database" / "database.db"
+DATA_ROOT_PATH = homedir / Path(config[config["current"]]["root_dir"])
+DB_PATH = homedir / Path(config[config["current"]]["database_path"])
 
 os.makedirs(DATA_ROOT_PATH, exist_ok=True)
 os.makedirs(DB_PATH.parent, exist_ok=True)
 
 def init_logger() -> logging.Logger:
 	try:
-		with open("logger_config.yaml", "r") as f:
+		with open(homedir / "config" / "logger_config.yaml", "r") as f:
 			config = yaml.safe_load(f)
 		logging.config.dictConfig(config)
 		logger = logging.getLogger("dev")
@@ -389,37 +390,3 @@ async def trigger_scan():
 	except Exception:
 		logger.exception("Error triggering scan")
 		raise HTTPException(status_code=500, detail="Failed to trigger scan")
-		
-# @app.get("/api/playlist/check_by_url")
-# async def check_playlist_by_url(
-# 	url: str,
-# 	owner: str,
-# 	db: aiosqlite.Connection = Depends(get_db),
-# ):
-# 	"""
-# 	Check whether the given playlist URL already exists for the owner.
-
-# 	Validates the URL, extracts the playlist ID, and returns a boolean
-# 	with optional playlist metadata if a matching active playlist is found.
-# 	"""
-# 	logger = app.state.logger
-# 	try:
-# 		if not validate_playlist_url(url):
-# 			raise HTTPException(status_code=400, detail="Invalid URL")
-
-# 		playlist_id = extract_playlist_id(url)
-
-# 		cur = await db.execute(
-# 			"SELECT id, playlist_id, name FROM playlist WHERE playlist_id = ? AND owner = ? AND active = 1",
-# 			(playlist_id, owner),
-# 		)
-# 		row = await cur.fetchone()
-
-# 		if row:
-# 			return {"exists": True, "playlist": dict(row)}
-# 		return {"exists": False}
-# 	except HTTPException:
-# 		raise
-# 	except Exception:
-# 		logger.exception("Error checking playlist")
-# 		raise HTTPException(status_code=500, detail="Failed to check playlist")
