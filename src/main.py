@@ -12,6 +12,7 @@ from yt_dlp import YoutubeDL
 from celery import Celery
 import dotenv
 import json
+import sys
 from helpers import validate_true_playlist_url, check_playlist_accessible
 from celery_app import scan
 
@@ -214,7 +215,6 @@ async def deactivate_user(
 async def add_playlist(
 	url: str,
 	owner: str,
-	name: str | None = None,
 	db: aiosqlite.Connection = Depends(get_db),
 ):
 	logger = app.state.logger
@@ -239,7 +239,8 @@ async def add_playlist(
 			raise HTTPException(status_code=400, detail=f"Playlist not accessible: {e}")
 
 		playlist_id = meta["playlist_id"]
-		final_name = name or meta["title"]
+		final_name = (meta.get("title") or playlist_id).strip()
+		playlist_row_id = None
 
 		# Try insert or reactivate
 		try:
@@ -248,6 +249,7 @@ async def add_playlist(
 				(playlist_id, final_name, owner),
 			)
 			await db.commit()
+			playlist_row_id = insert_cur.lastrowid
 		except aiosqlite.IntegrityError:
 			# Reactivate if inactive
 			cur = await db.execute(
@@ -261,14 +263,14 @@ async def add_playlist(
 					(final_name, row["id"]),
 				)
 				await db.commit()
-				insert_cur = row
+				playlist_row_id = row["id"]
 			else:
 				raise HTTPException(status_code=409, detail="Playlist already exists")
 
 		return {
 			"status": "success",
 			"playlist": {
-				"id": insert_cur.lastrowid,
+				"id": playlist_row_id,
 				"playlist_id": playlist_id,
 				"name": final_name,
 				"video_count": meta.get("count"),
@@ -373,6 +375,94 @@ async def check_access(url: str):
 	except Exception:
 		logger.exception("Error checking playlist access")
 		raise HTTPException(status_code=500, detail="Failed to check playlist access")
+
+async def update_dependencies():
+	"""
+	Tries to update ytdlp and ffmpeg, useful when downloads encounter error.
+	"""
+	logger = app.state.logger
+
+	async def run_cmd(*args: str) -> dict:
+		proc = await asyncio.create_subprocess_exec(
+			*args,
+			stdout=asyncio.subprocess.PIPE,
+			stderr=asyncio.subprocess.PIPE,
+		)
+		stdout, stderr = await proc.communicate()
+		return {
+			"cmd": " ".join(args),
+			"exit_code": proc.returncode,
+			"stdout": stdout.decode(errors="replace").strip(),
+			"stderr": stderr.decode(errors="replace").strip(),
+		}
+
+	results: list[dict] = []
+
+	logger.info("Updating dependencies: yt-dlp and ffmpeg")
+
+	# 1) Update yt-dlp in current Python environment.
+	try:
+		pip_result = await run_cmd(sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp")
+		results.append(pip_result)
+		if pip_result["exit_code"] == 0:
+			logger.info("yt-dlp upgrade succeeded")
+		else:
+			logger.warning("yt-dlp upgrade failed with exit code %s", pip_result["exit_code"])
+	except Exception:
+		logger.exception("Unexpected failure running yt-dlp upgrade")
+		results.append({
+			"cmd": f"{sys.executable} -m pip install --upgrade yt-dlp",
+			"exit_code": -1,
+			"stdout": "",
+			"stderr": "Unexpected exception while upgrading yt-dlp",
+		})
+
+	# 2) Update ffmpeg only when apt-get is available and process has root privileges.
+	if shutil.which("apt-get"):
+		if os.geteuid() == 0:
+			try:
+				apt_update = await run_cmd("apt-get", "update")
+				results.append(apt_update)
+				apt_install = await run_cmd("apt-get", "install", "-y", "ffmpeg")
+				results.append(apt_install)
+				if apt_install["exit_code"] == 0:
+					logger.info("ffmpeg upgrade/install succeeded via apt-get")
+				else:
+					logger.warning("ffmpeg install failed with exit code %s", apt_install["exit_code"])
+			except Exception:
+				logger.exception("Unexpected failure running apt-get for ffmpeg")
+				results.append({
+					"cmd": "apt-get install -y ffmpeg",
+					"exit_code": -1,
+					"stdout": "",
+					"stderr": "Unexpected exception while installing ffmpeg",
+				})
+		else:
+			msg = "Skipping ffmpeg apt update: root privileges required"
+			logger.warning(msg)
+			results.append({
+				"cmd": "apt-get install -y ffmpeg",
+				"exit_code": -2,
+				"stdout": "",
+				"stderr": msg,
+			})
+	else:
+		msg = "Skipping ffmpeg apt update: apt-get not available"
+		logger.warning(msg)
+		results.append({
+			"cmd": "apt-get install -y ffmpeg",
+			"exit_code": -2,
+			"stdout": "",
+			"stderr": msg,
+		})
+
+	overall_ok = all(step.get("exit_code") == 0 for step in results if step["exit_code"] not in (-2,))
+	logger.info("Dependency update complete: success=%s steps=%d", overall_ok, len(results))
+
+	return {
+		"status": "success" if overall_ok else "partial",
+		"results": results,
+	}
 
 @app.post("/api/tasks/scan")
 async def trigger_scan():

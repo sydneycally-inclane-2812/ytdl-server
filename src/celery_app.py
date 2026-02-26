@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 
 import aiosqlite
@@ -127,12 +128,12 @@ def remove_ids_from_archive_and_disk(
 	return updated_archive, removed_entries, removed_files
 
 
-def download_missing_videos(playlist_folder: Path, missing_ids: set[str]) -> int:
+def download_missing_videos(playlist_folder: Path, missing_ids: set[str], album_name: str | None = None) -> int:
 	if not missing_ids:
 		return 0
 
 	logger.debug("Downloading missing videos count=%d in %s", len(missing_ids), playlist_folder)
-	options = get_ytdl_opts(playlist_folder, playlist_folder=False)
+	options = get_ytdl_opts(playlist_folder, playlist_folder=False, album_name=album_name)
 	success = 0
 	with YoutubeDL(options) as ydl:
 		for video_id in sorted(missing_ids):
@@ -216,6 +217,54 @@ def prune_info_json_files(playlist_folder: Path) -> int:
 	return removed
 
 
+def retag_album_metadata(playlist_folder: Path, album_name: str | None = None) -> int:
+	"""Update album tags on existing MP3 files in the playlist folder."""
+	if not album_name:
+		logger.debug("No album name provided, skipping retag for %s", playlist_folder)
+		return 0
+
+	updated = 0
+	for mp3_path in playlist_folder.glob("*.mp3"):
+		try:
+			# Use safe temp filename to avoid special character issues
+			import tempfile
+			import os
+			with tempfile.NamedTemporaryFile(suffix=".mp3", dir=playlist_folder, delete=False) as tmp_file:
+				temp_path = tmp_file.name
+			
+			# Use ffmpeg to update album metadata
+			result = subprocess.run([
+				"ffmpeg", "-i", str(mp3_path), 
+				"-metadata", f"album={album_name}",
+				"-codec", "copy", "-y",
+				temp_path
+			], capture_output=True, text=True, check=True)
+			
+			# Replace original with updated file
+			mp3_path.unlink()
+			os.rename(temp_path, str(mp3_path))
+			updated += 1
+			logger.debug("Updated album tag for %s", mp3_path.name)
+			
+		except subprocess.CalledProcessError as e:
+			logger.warning("Failed updating album tag for %s: %s", mp3_path.name, e.stderr)
+			# Clean up temp file if it exists
+			try:
+				os.unlink(temp_path)
+			except (NameError, FileNotFoundError):
+				pass
+		except Exception:
+			logger.warning("Failed updating album tag for %s", mp3_path.name, exc_info=True)
+			# Clean up temp file if it exists
+			try:
+				os.unlink(temp_path)
+			except (NameError, FileNotFoundError):
+				pass
+
+	logger.debug("Retagged album metadata count=%d in %s", updated, playlist_folder)
+	return updated
+
+
 async def _update_playlist_db(owner: str, playlist: str):
 	async with aiosqlite.connect(DB_PATH) as db:
 		await db.execute(
@@ -223,6 +272,19 @@ async def _update_playlist_db(owner: str, playlist: str):
 			(playlist, owner),
 		)
 		await db.commit()
+
+
+async def _get_playlist_name(owner: str, playlist: str) -> str | None:
+	async with aiosqlite.connect(DB_PATH) as db:
+		db.row_factory = aiosqlite.Row
+		cur = await db.execute(
+			"SELECT name FROM playlist WHERE playlist_id = ? AND owner = ? LIMIT 1",
+			(playlist, owner),
+		)
+		row = await cur.fetchone()
+		if row and row["name"]:
+			return str(row["name"])
+		return None
 
 
 @celery.task(bind=True, max_retries=3)
@@ -249,14 +311,16 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 		remote_ids = extract_remote_playlist_ids(playlist_url)
 		local_ids_before = set(archive_map.values())
 		missing_ids = remote_ids - local_ids_before
-		downloaded_count = download_missing_videos(playlist_folder, missing_ids)
+		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
+		downloaded_count = download_missing_videos(playlist_folder, missing_ids, album_name=playlist_name)
 
 		archive_map = merge_archive_with_info_files(playlist_folder, archive_map, missing_ids)
 		save_archive_map(playlist_folder, archive_map)
 		pruned_info_files = prune_info_json_files(playlist_folder)
+		retagged_files = retag_album_metadata(playlist_folder, playlist_name)
 
 		logger.info(
-			"Sync complete for %s/%s: remote_ids=%d local_ids_before=%d missing=%d downloaded=%d removed_entries=%d removed_files=%d info_pruned=%d archive_entries=%d",
+			"Sync complete for %s/%s: remote_ids=%d local_ids_before=%d missing=%d downloaded=%d removed_entries=%d removed_files=%d info_pruned=%d retagged=%d archive_entries=%d",
 			owner,
 			playlist,
 			len(remote_ids),
@@ -266,6 +330,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 			removed_entries,
 			removed_files,
 			pruned_info_files,
+			retagged_files,
 			len(archive_map),
 		)
 
@@ -278,6 +343,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 			"removed_entries": removed_entries,
 			"removed_files": removed_files,
 			"missing_ids": len(missing_ids),
+			"retagged_files": retagged_files,
 			"archive_entries": len(archive_map),
 		}
 	except Exception as e:

@@ -10,13 +10,15 @@ from fastapi import HTTPException
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
-def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True):
+def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str | None = None):
 	"""
 	Returns a ytdlp opt dictionary for a specified root folder. Root_dir must be a Path object.
 	If playlist_folder is True, files for a playlist will be placed into a subfolder named after the playlist.
 	Embeds the video id and playlist id into the file metadata (comment tag).
 	"""
 	root_dir = Path(root_dir)
+	# Set umask for group writable files (664 files, 775 dirs)
+	os.umask(0o002)
 	# create directory if missing
 	if not root_dir.exists():
 		root_dir.mkdir(parents=True, exist_ok=True)
@@ -30,6 +32,9 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True):
 		outtmpl = str(root_dir / '%(playlist_title)s' / '%(playlist_index)s - %(title)s.%(ext)s')
 	else:
 		outtmpl = str(root_dir / '%(title)s.%(ext)s')
+
+	album_tag = (album_name or '').strip()
+	album_meta_source = album_tag if album_tag else '%(playlist_title,playlist,uploader,channel,creator)s'
 
 	ytdl_opts = {
 		'format': 'bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best',
@@ -47,22 +52,44 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True):
 		'retries': 5,
 		'fragment_retries': 20,
 		'continuedl': True,
-		'concurrent_fragment_downloads': 1,
-		'sleep_interval': 5,
-		'max_sleep_interval': 10,
+		'concurrent_fragment_downloads': 4,
+		'sleep_interval': 3,
+		'max_sleep_interval': 6,
 		'cookiefile': 'cookies.txt',
 		'writeinfojson': True,
+		'writethumbnail': True,
+		'addmetadata': True,
+		'parse_metadata': [
+			'%(artist,uploader,channel,creator)s:%(meta_artist)s',
+			'%(artist,uploader,channel,creator)s:%(meta_album_artist)s',
+			f'{album_meta_source}:%(meta_album)s',
+			'%(track,title,fulltitle)s:%(meta_title)s',
+		],
 
 		'postprocessors': [{
 			'key': 'FFmpegExtractAudio',
 			'preferredcodec': 'mp3',
 			'preferredquality': '192',
+		}, {
+			'key': 'FFmpegMetadata',
+		}, {
+			'key': 'FFmpegThumbnailsConvertor',
+			'format': 'jpg',
+		}, {
+			'key': 'EmbedThumbnail',
 		}],
 
 		# Prefer mapping args to the specific PP
 		'postprocessor_args': {
 			'FFmpegExtractAudio': [
+				'-id3v2_version', '3',
 				'-metadata', 'comment=youtube_id=%(id)s; playlist_id=%(playlist_id)s'
+			],
+			'FFmpegMetadata': [
+				'-metadata', 'artist=%(meta_artist)s',
+				'-metadata', 'album_artist=%(meta_album_artist)s',
+				'-metadata', 'title=%(meta_title)s',
+				'-metadata', 'album=%(meta_album)s'
 			]
 		},
 	}
