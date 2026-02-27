@@ -10,11 +10,14 @@ from fastapi import HTTPException
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 
+METADATA_PIPELINE_VERSION = "2026-02-27.2"
+
 def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str | None = None):
 	"""
 	Returns a ytdlp opt dictionary for a specified root folder. Root_dir must be a Path object.
 	If playlist_folder is True, files for a playlist will be placed into a subfolder named after the playlist.
 	Embeds the video id and playlist id into the file metadata (comment tag).
+	Writes canonical music metadata for Navidrome compatibility.
 	"""
 	root_dir = Path(root_dir)
 	# Set umask for group writable files (664 files, 775 dirs)
@@ -53,17 +56,18 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str 
 		'fragment_retries': 20,
 		'continuedl': True,
 		'concurrent_fragment_downloads': 4,
-		'sleep_interval': 2,
-		'max_sleep_interval': 4,
+		'sleep_interval': 3,
+		'max_sleep_interval': 6,
 		'cookiefile': 'cookies.txt',
 		'writeinfojson': True,
 		'writethumbnail': True,
-		'addmetadata': True,
 		'parse_metadata': [
-			'%(artist,uploader,channel,creator)s:%(meta_artist)s',
-			'%(artist,uploader,channel,creator)s:%(meta_album_artist)s',
+			'%(artists,artist,uploader,channel,creator)s:%(meta_artist)s',
 			f'{album_meta_source}:%(meta_album)s',
 			'%(track,title,fulltitle)s:%(meta_title)s',
+			'%(playlist_index,track_number,track)s:%(meta_track)s',
+			'%(release_year,release_date,upload_date,year)s:%(meta_date)s',
+			'%(genre)s:%(meta_genre)s',
 		],
 
 		'postprocessors': [{
@@ -87,12 +91,32 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str 
 			],
 			'FFmpegMetadata': [
 				'-metadata', 'artist=%(meta_artist)s',
-				'-metadata', 'album_artist=%(meta_album_artist)s',
+				'-metadata', 'album_artist=%(meta_artist)s',
 				'-metadata', 'title=%(meta_title)s',
-				'-metadata', 'album=%(meta_album)s'
+				'-metadata', 'album=%(meta_album)s',
+				'-metadata', 'track=%(meta_track)s',
+				'-metadata', 'date=%(meta_date)s',
+				'-metadata', 'genre=%(meta_genre)s',
+				'-metadata', 'description=',
+				'-metadata', 'synopsis=',
+				'-metadata', 'purl='
+			],
+			'FFmpegThumbnailsConvertor': [
+				'-vf', 'scale=1000:1000:force_original_aspect_ratio=decrease',
+				'-q:v', '3',
+				'-pix_fmt', 'yuvj420p'
 			]
 		},
 	}
+
+	logging.getLogger("dev").debug(
+		"YT-DLP metadata pipeline=%s album_name=%r parse_metadata=%s postprocessors=%s ppa_keys=%s",
+		METADATA_PIPELINE_VERSION,
+		album_name,
+		ytdl_opts.get('parse_metadata'),
+		[postprocessor.get('key') for postprocessor in ytdl_opts.get('postprocessors', [])],
+		sorted((ytdl_opts.get('postprocessor_args') or {}).keys()),
+	)
 
 	return ytdl_opts
 
