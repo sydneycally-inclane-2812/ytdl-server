@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="$(cd "$SCRIPT_DIR/../../src" && pwd)"
+cd "$TARGET_DIR"
+
+RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-2}"
+
+PIDS=()
+
+log() {
+	printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+run_with_restart() {
+	local name="$1"
+	shift
+
+	while true; do
+		log "Starting ${name}"
+		"$@"
+		local exit_code=$?
+		log "${name} exited with code ${exit_code}; restarting in ${RESTART_DELAY_SECONDS}s"
+		sleep "$RESTART_DELAY_SECONDS"
+	done
+}
+
+shutdown() {
+	log "Stopping managed processes"
+	for pid in "${PIDS[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+	wait
+}
+
+trap shutdown INT TERM EXIT
+
+run_with_restart "uvicorn" \
+	uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --log-level warning &
+PIDS+=("$!")
+
+run_with_restart "celery-worker" \
+	uv run celery -A celery_app worker --loglevel=WARNING --pool=solo &
+PIDS+=("$!")
+
+run_with_restart "celery-beat" \
+	uv run celery -A celery_app beat --loglevel=WARNING &
+PIDS+=("$!")
+
+log "Production services started (uvicorn, celery worker, celery beat)"
+wait

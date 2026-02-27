@@ -6,28 +6,40 @@ from pathlib import Path
 
 import aiosqlite
 from celery import Celery
+from celery.schedules import crontab
 from yt_dlp import YoutubeDL
 
 from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts
 from metadata_cleanup import cleanup_folder_metadata
 
-celery = Celery(
-    "ytdl_worker",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/1",
-)
-
-celery.conf.task_routes = {
-    "tasks.download_playlist": {"queue": "downloads"}
-}
 homedir = Path(__file__).parent.parent.resolve()
 with open(homedir / "config" / "app_config.json", "r") as f:
 	config = json.load(f)
+
+redis_base_url = config[config["current"]]["redis_url"].rstrip("/")
+
+celery = Celery(
+    "ytdl_worker",
+	broker=f"{redis_base_url}/0",
+	backend=f"{redis_base_url}/1",
+)
+
+scan_wait = str(int(config[config["current"]]["scan_wait"]))
+celery.conf.task_routes = {
+    "tasks.download_playlist": {"queue": "downloads"}
+}
+celery.conf.beat_schedule = {
+	"scan-every-5-minutes": {
+		"task": "celery_app.scan",
+		"schedule": crontab(minute=f"*/{scan_wait}"),
+	},
+}
  
 # Data paths
 DATA_ROOT_PATH = homedir / Path(config[config["current"]]["root_dir"])
 DB_PATH = homedir / Path(config[config["current"]]["database_path"])
-logger = logging.getLogger("dev")
+logger_name = str(config[config["current"]].get("logger_name", "dev"))
+logger = logging.getLogger(logger_name)
 ARCHIVE_FILE_NAME = "archive.json"
 
 def load_archive_map(playlist_folder: Path) -> dict[str, str]:

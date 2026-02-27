@@ -22,6 +22,7 @@ with open(homedir / "config" / "app_config.json", "r") as f:
 
 DATA_ROOT_PATH = homedir / Path(config[config["current"]]["root_dir"])
 DB_PATH = homedir / Path(config[config["current"]]["database_path"])
+LOG_PATTERN = homedir / Path(config[config["current"]]["logging_pattern"])
 
 os.makedirs(DATA_ROOT_PATH, exist_ok=True)
 os.makedirs(DB_PATH.parent, exist_ok=True)
@@ -31,7 +32,7 @@ def init_logger() -> logging.Logger:
 		with open(homedir / "config" / "logger_config.yaml", "r") as f:
 			config = yaml.safe_load(f)
 		logging.config.dictConfig(config)
-		logger = logging.getLogger("dev")
+		logger = logging.getLogger(LOG_PATTERN)
 		logger.debug("Logger configured")
 		return logger
 	except Exception as e:

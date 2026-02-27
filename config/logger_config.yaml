@@ -24,7 +24,11 @@ loggers:
     level: DEBUG
     handlers: [console, file_handler]
     propagate: False
+  prod:
+    level: INFO
+    handlers: [console]
+    propagate: False
     
 root:
   level: DEBUG
-  handlers: [console, file_handler]
+  handlers: [console, file_handler]   

@@ -1,4 +1,10 @@
 #!/bin/bash
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TARGET_DIR="$(cd "$SCRIPT_DIR/../../src" && pwd)"
+cd "$TARGET_DIR"
+
 uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --reload &
 UVICORN_PID=$!
 uv run celery -A celery_app worker --loglevel=info --pool=solo &
