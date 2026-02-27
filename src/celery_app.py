@@ -30,13 +30,8 @@ DB_PATH = homedir / Path(config[config["current"]]["database_path"])
 logger = logging.getLogger("dev")
 ARCHIVE_FILE_NAME = "archive.json"
 
-
-def _archive_path(playlist_folder: Path) -> Path:
-	return playlist_folder / ARCHIVE_FILE_NAME
-
-
 def load_archive_map(playlist_folder: Path) -> dict[str, str]:
-	archive_path = _archive_path(playlist_folder)
+	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	if not archive_path.exists():
 		logger.debug("No archive map at %s", archive_path)
 		return {}
@@ -63,7 +58,7 @@ def load_archive_map(playlist_folder: Path) -> dict[str, str]:
 
 
 def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None:
-	archive_path = _archive_path(playlist_folder)
+	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	temp_path = playlist_folder / ".archive.json.tmp"
 	temp_path.write_text(json.dumps(archive_map, ensure_ascii=False, indent=2) + "\n")
 	temp_path.replace(archive_path)
@@ -84,7 +79,6 @@ def extract_remote_playlist_ids(playlist_url: str) -> set[str]:
 
 	logger.debug("Remote playlist ids fetched=%d from %s", len(remote_ids), playlist_url)
 	return remote_ids
-
 
 def remove_ids_from_archive_and_disk(
 	playlist_folder: Path,
@@ -147,7 +141,6 @@ def download_missing_videos(playlist_folder: Path, missing_ids: set[str], album_
 
 	return success
 
-
 def _pick_media_file(candidates: list[Path]) -> Path | None:
 	if not candidates:
 		return None
@@ -155,7 +148,6 @@ def _pick_media_file(candidates: list[Path]) -> Path | None:
 	if mp3_candidates:
 		return max(mp3_candidates, key=lambda candidate: candidate.stat().st_mtime)
 	return max(candidates, key=lambda candidate: candidate.stat().st_mtime)
-
 
 def merge_archive_with_info_files(
 	playlist_folder: Path,
@@ -203,7 +195,6 @@ def merge_archive_with_info_files(
 
 	return updated_archive
 
-
 def prune_info_json_files(playlist_folder: Path) -> int:
 	removed = 0
 	for info_path in playlist_folder.glob("*.info.json"):
@@ -215,7 +206,6 @@ def prune_info_json_files(playlist_folder: Path) -> int:
 
 	logger.debug("Pruned info files count=%d in %s", removed, playlist_folder)
 	return removed
-
 
 def retag_album_metadata(playlist_folder: Path, album_name: str | None = None) -> int:
 	"""Update album tags on existing MP3 files in the playlist folder."""
