@@ -1,17 +1,21 @@
 {
 	"dev": {
 		"root_dir": "/srv/hgst/ytdl",
+		"temp_dir": "/srv/hgst/ytdl_temp",
 		"database_path": ".database/database.db",
 		"redis_url": "redis://localhost:6379",
 		"logging_pattern": "dev",
-		"scan_wait": 5
+		"scan_wait": 5,
+		"scan_wait_extra_maximum": 1
 	},
 	"prod": {
 		"root_dir": "/srv/hgst/ytdl",
+		"temp_dir": "/srv/hgst/ytdl_temp",
 		"database_path": ".database/database.db",
 		"redis_url": "redis://localhost:6379",
 		"logging_pattern": "prod",
-		"scan_wait": 12
+		"scan_wait": 10,
+		"scan_wait_extra_maximum": 2
 	},
 	"current": "prod"
 }

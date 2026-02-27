@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$(cd "$SCRIPT_DIR/../../src" && pwd)"
+TARGET_DIR="$(cd "$SCRIPT_DIR/../src" && pwd)"
 cd "$TARGET_DIR"
 
 RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-2}"

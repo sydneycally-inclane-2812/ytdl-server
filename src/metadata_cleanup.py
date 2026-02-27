@@ -166,8 +166,8 @@ def build_target_tags(
 
 	title = existing_title or audio_file.stem
 	artist = existing_artist or "Unknown Artist"
-	album_artist = existing_album_artist or artist
 	album = _normalize(playlist_name) or existing_album or audio_file.parent.name
+	album_artist = album
 	track = preferred_track_normalized
 
 	target = {

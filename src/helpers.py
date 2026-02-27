@@ -91,7 +91,7 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str 
 			],
 			'FFmpegMetadata': [
 				'-metadata', 'artist=%(meta_artist)s',
-				'-metadata', 'album_artist=%(meta_artist)s',
+				'-metadata', 'album_artist=%(meta_album)s',
 				'-metadata', 'title=%(meta_title)s',
 				'-metadata', 'album=%(meta_album)s',
 				'-metadata', 'track=%(meta_track)s',

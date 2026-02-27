@@ -1,7 +1,9 @@
 import asyncio
 import json
 import logging
+import random
 import shutil
+from datetime import timedelta
 from pathlib import Path
 
 import aiosqlite
@@ -24,14 +26,15 @@ celery = Celery(
 	backend=f"{redis_base_url}/1",
 )
 
-scan_wait = str(int(config[config["current"]]["scan_wait"]))
+scan_wait_minutes = int(config[config["current"]].get("scan_wait", 12))
+scan_wait_extra_maximum_minutes = int(config[config["current"]].get("scan_wait_extra_maximum", 0))
 celery.conf.task_routes = {
     "tasks.download_playlist": {"queue": "downloads"}
 }
 celery.conf.beat_schedule = {
-	"scan-every-5-minutes": {
-		"task": "celery_app.scan",
-		"schedule": crontab(minute=f"*/{scan_wait}"),
+	"schedule-scan-with-jitter": {
+		"task": "celery_app.schedule_scan",
+		"schedule": timedelta(minutes=scan_wait_minutes),
 	},
 }
  
@@ -243,6 +246,25 @@ async def _get_playlist_name(owner: str, playlist: str) -> str | None:
 		return None
 
 
+@celery.task
+def schedule_scan():
+	extra_minutes = max(0, scan_wait_extra_maximum_minutes)
+	countdown_seconds = random.randint(0, extra_minutes * 60) if extra_minutes else 0
+	logger.info(
+		"Scheduling scan with jitter countdown_seconds=%d base_minutes=%d extra_max_minutes=%d",
+		countdown_seconds,
+		scan_wait_minutes,
+		extra_minutes,
+	)
+	scan.apply_async(countdown=countdown_seconds)
+	return {
+		"scheduled": True,
+		"countdown_seconds": countdown_seconds,
+		"base_minutes": scan_wait_minutes,
+		"extra_max_minutes": extra_minutes,
+	}
+
+
 @celery.task(bind=True, max_retries=3)
 def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: list[str] | None = None):
 	"""
@@ -359,6 +381,7 @@ def scan(self):
 	"""
 	Scan active playlists, diff remote IDs vs archive.json IDs, and queue sync tasks.
 	"""
+	
 	try:
 		async def fetch_playlists():
 			async with aiosqlite.connect(DB_PATH) as db:
