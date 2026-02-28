@@ -22,7 +22,7 @@ with open(homedir / "config" / "app_config.json", "r") as f:
 
 DATA_ROOT_PATH = homedir / Path(config[config["current"]]["root_dir"])
 DB_PATH = homedir / Path(config[config["current"]]["database_path"])
-LOG_PATTERN = homedir / Path(config[config["current"]]["logging_pattern"])
+LOG_PATTERN = str(config[config["current"]]["logging_pattern"])
 
 os.makedirs(DATA_ROOT_PATH, exist_ok=True)
 os.makedirs(DB_PATH.parent, exist_ok=True)

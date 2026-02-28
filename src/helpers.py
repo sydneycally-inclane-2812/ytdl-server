@@ -1,4 +1,3 @@
-
 # Helper functions for initialization
 import logging
 import os
@@ -9,32 +8,33 @@ from urllib.parse import urlparse, parse_qs
 from fastapi import HTTPException
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
+import shutil
 
 METADATA_PIPELINE_VERSION = "2026-02-27.2"
 
-def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str | None = None):
+def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str | None = None):
 	"""
-	Returns a ytdlp opt dictionary for a specified root folder. Root_dir must be a Path object.
-	If playlist_folder is True, files for a playlist will be placed into a subfolder named after the playlist.
-	Embeds the video id and playlist id into the file metadata (comment tag).
-	Writes canonical music metadata for Navidrome compatibility.
+	Returns a ytdlp opt dictionary for a specified temp folder. Temp_dir must be a Path object.
+	Downloads files to temp_dir.
 	"""
-	root_dir = Path(root_dir)
+	temp_dir = Path(temp_dir)
+
 	# Set umask for group writable files (664 files, 775 dirs)
 	os.umask(0o002)
-	# create directory if missing
-	if not root_dir.exists():
-		root_dir.mkdir(parents=True, exist_ok=True)
+
+	# Create directory if missing
+	if not temp_dir.exists():
+		temp_dir.mkdir(parents=True, exist_ok=True)
 
 	# Test if we have write permissions
-	if not os.access(str(root_dir), mode=os.W_OK):
-		raise ValueError(f"Invalid path or no write permission: {root_dir}")
+	if not os.access(str(temp_dir), mode=os.W_OK):
+		raise ValueError(f"Invalid path or no write permission: {temp_dir}")
 
 	if playlist_folder:
 		# use playlist tokens so ytdlp will put playlist items into a folder named after the playlist
-		outtmpl = str(root_dir / '%(playlist_title)s' / '%(playlist_index)s - %(title)s.%(ext)s')
+		outtmpl = str(temp_dir / '%(playlist_title)s' / '%(playlist_index)s - %(title)s.%(ext)s')
 	else:
-		outtmpl = str(root_dir / '%(title)s.%(ext)s')
+		outtmpl = str(temp_dir / '%(title)s.%(ext)s')
 
 	album_tag = (album_name or '').strip()
 	album_meta_source = album_tag if album_tag else '%(playlist_title,playlist,uploader,channel,creator)s'
@@ -120,6 +120,17 @@ def get_ytdl_opts(root_dir: Path, playlist_folder: bool = True, album_name: str 
 
 	return ytdl_opts
 
+def move_files_to_root(temp_dir: Path, root_dir: Path):
+	"""Move files from temp_dir to root_dir and clear temp_dir."""
+	for item in temp_dir.iterdir():
+		dest = root_dir / item.name
+		if item.is_dir():
+			shutil.move(str(item), str(dest))
+		else:
+			shutil.copy2(str(item), str(dest))
+	# Clear temp_dir
+	shutil.rmtree(temp_dir)
+
 def validate_true_playlist_url(url: str) -> str:
 	"""
 	Verify a playlist URL and return a normalized URL. This standardizes the input and output.
@@ -164,7 +175,6 @@ def check_playlist_accessible(url: str) -> dict:
 	try:
 		with YoutubeDL(opts) as ydl:
 			info = ydl.extract_info(url, download=False)
-			
 
 		if not info:
 			raise RuntimeError("No information returned")
@@ -177,7 +187,6 @@ def check_playlist_accessible(url: str) -> dict:
 
 		if not playlist_id:
 			raise RuntimeError("URL is not a playlist")
-
 
 		if info.get("availability") == "private":
 			raise RuntimeError("Playlist is private")

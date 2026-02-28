@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$(cd "$SCRIPT_DIR/../src" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TARGET_DIR="$PROJECT_ROOT/src"
 cd "$TARGET_DIR"
+
+if command -v uv >/dev/null 2>&1; then
+	UV_BIN="uv"
+else
+	echo "uv not found in PATH." >&2
+	exit 1
+fi
 
 RESTART_DELAY_SECONDS="${RESTART_DELAY_SECONDS:-2}"
 
@@ -19,8 +27,10 @@ run_with_restart() {
 
 	while true; do
 		log "Starting ${name}"
-		"$@"
-		local exit_code=$?
+		local exit_code=0
+		if ! "$@"; then
+			exit_code=$?
+		fi
 		log "${name} exited with code ${exit_code}; restarting in ${RESTART_DELAY_SECONDS}s"
 		sleep "$RESTART_DELAY_SECONDS"
 	done
@@ -37,15 +47,15 @@ shutdown() {
 trap shutdown INT TERM EXIT
 
 run_with_restart "uvicorn" \
-	uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --log-level warning &
+	"$UV_BIN" run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port 8080 --workers 1 --log-level info &
 PIDS+=("$!")
 
 run_with_restart "celery-worker" \
-	uv run celery -A celery_app worker --loglevel=WARNING --pool=solo &
+	"$UV_BIN" run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=INFO --pool=solo &
 PIDS+=("$!")
 
 run_with_restart "celery-beat" \
-	uv run celery -A celery_app beat --loglevel=WARNING &
+	"$UV_BIN" run --project "$PROJECT_ROOT" celery -A celery_app beat --loglevel=INFO &
 PIDS+=("$!")
 
 log "Production services started (uvicorn, celery worker, celery beat)"

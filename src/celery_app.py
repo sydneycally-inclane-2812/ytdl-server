@@ -3,6 +3,7 @@ import json
 import logging
 import random
 import shutil
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from celery import Celery
 from celery.schedules import crontab
 from yt_dlp import YoutubeDL
 
-from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts
+from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts, move_files_to_root
 from metadata_cleanup import cleanup_folder_metadata
 
 homedir = Path(__file__).parent.parent.resolve()
@@ -137,25 +138,25 @@ def remove_ids_from_archive_and_disk(
 	return updated_archive, removed_entries, removed_files
 
 
-def download_missing_videos(playlist_folder: Path, missing_ids: set[str], album_name: str | None = None) -> int:
-	if not missing_ids:
-		return 0
+def download_missing_videos(temp_dir: Path, missing_ids: set[str], album_name: str | None = None) -> int:
+    if not missing_ids:
+        return 0
 
-	logger.debug("Downloading missing videos count=%d in %s", len(missing_ids), playlist_folder)
-	logger.info("Using metadata pipeline version=%s for %s", METADATA_PIPELINE_VERSION, playlist_folder)
-	options = get_ytdl_opts(playlist_folder, playlist_folder=False, album_name=album_name)
-	success = 0
-	with YoutubeDL(options) as ydl:
-		for video_id in sorted(missing_ids):
-			video_url = f"https://www.youtube.com/watch?v={video_id}"
-			try:
-				ydl.extract_info(video_url, download=True)
-				success += 1
-				logger.debug("Downloaded missing video id=%s", video_id)
-			except Exception:
-				logger.warning("Failed downloading video id=%s", video_id, exc_info=True)
+    logger.debug("Downloading missing videos count=%d in %s", len(missing_ids), temp_dir)
+    logger.info("Using metadata pipeline version=%s for %s", METADATA_PIPELINE_VERSION, temp_dir)
+    options = get_ytdl_opts(temp_dir, playlist_folder=False, album_name=album_name)  # Pass temp_dir here
+    success = 0
+    with YoutubeDL(options) as ydl:
+        for video_id in sorted(missing_ids):
+            video_url = f"https://www.youtube.com/watch?v={video_id}"
+            try:
+                ydl.extract_info(video_url, download=True)
+                success += 1
+                logger.debug("Downloaded missing video id=%s", video_id)
+            except Exception:
+                logger.warning("Failed downloading video id=%s", video_id, exc_info=True)
 
-	return success
+    return success
 
 def _pick_media_file(candidates: list[Path]) -> Path | None:
 	if not candidates:
@@ -269,11 +270,17 @@ def schedule_scan():
 def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: list[str] | None = None):
 	"""
 	Sync a playlist using archive.json as source of truth.
+	Downloads files to a unique temporary directory for the playlist, then moves them to the playlist folder.
 	"""
 	playlist_folder = DATA_ROOT_PATH / owner / playlist
 	playlist_folder.mkdir(parents=True, exist_ok=True)
 	removed_ids = removed_ids or []
 	playlist_url = url or f"https://www.youtube.com/playlist?list={playlist}"
+
+	# Get temp_dir from config and create a unique subdirectory for the playlist
+	temp_dir = Path(config[config["current"]]["temp_dir"])
+	playlist_temp_dir = temp_dir / f"{owner}_{playlist}"
+	playlist_temp_dir.mkdir(parents=True, exist_ok=True)
 
 	try:
 		removed_id_set = set(removed_ids)
@@ -290,7 +297,12 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 		local_ids_before = set(archive_map.values())
 		missing_ids = remote_ids - local_ids_before
 		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
-		downloaded_count = download_missing_videos(playlist_folder, missing_ids, album_name=playlist_name)
+
+		# Use the unique playlist_temp_dir for downloads
+		downloaded_count = download_missing_videos(playlist_temp_dir, missing_ids, album_name=playlist_name)
+
+		# Move files to the playlist folder after download
+		move_files_to_root(playlist_temp_dir, playlist_folder)
 
 		archive_map = merge_archive_with_info_files(playlist_folder, archive_map, missing_ids)
 		save_archive_map(playlist_folder, archive_map)
@@ -330,6 +342,11 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 		}
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)
+	finally:
+		# Clean up the temporary directory
+		if playlist_temp_dir.exists():
+			shutil.rmtree(playlist_temp_dir)
+
 
 def validate(owner: str, playlist: str) -> dict:
 	"""

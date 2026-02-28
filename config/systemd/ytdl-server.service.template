@@ -1,0 +1,24 @@
+[Unit]
+Description=YT-DLP Server (FastAPI + Celery Worker + Celery Beat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{USER}}
+Group={{GROUP}}
+WorkingDirectory={{WORKDIR}}
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/root/.local/bin:{{WORKDIR}}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=RESTART_DELAY_SECONDS=2
+EnvironmentFile=-{{WORKDIR}}/.env
+ExecStart={{WORKDIR}}/scripts/prod_startup
+Restart=always
+RestartSec=3
+KillMode=control-group
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
