@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# This script starts the production services (uvicorn, celery worker, celery beat) with automatic restarts on failure.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="$PROJECT_ROOT/src"
 cd "$TARGET_DIR"
 
+if ! command -v jq >/dev/null 2>&1; then
+	echo "jq not found in PATH." >&2
+	exit 1
+fi
+
+# Parse the json to find the configured port for the current environment, defaulting to 8080 if not set 
+CONFIG_PATH="$PROJECT_ROOT/config/app_config.json"
+CURRENT_ENV="$(jq -r '.current' "$CONFIG_PATH")"
+PORT="$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8080' "$CONFIG_PATH")"
+
+# Export UV to PATH
 if command -v uv >/dev/null 2>&1; then
 	UV_BIN="uv"
 else
@@ -47,7 +59,7 @@ shutdown() {
 trap shutdown INT TERM EXIT
 
 run_with_restart "uvicorn" \
-	"$UV_BIN" run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port 8080 --workers 1 --log-level info &
+	"$UV_BIN" run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --log-level info &
 PIDS+=("$!")
 
 run_with_restart "celery-worker" \

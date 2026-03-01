@@ -13,6 +13,7 @@ from pathlib import Path
 
 REQUIRED_FIELDS = ("title", "artist", "album", "album_artist", "track")
 NOISY_FIELDS = ("description", "synopsis", "purl")
+REPLAY_FIELDS = ("replaygain_track_gain", "replaygain_track_peak")
 
 
 @lru_cache(maxsize=1)
@@ -36,6 +37,38 @@ def _load_db_path() -> Path | None:
 		return None
 
 	return homedir / Path(database_path)
+
+
+def analyze_replaygain(audio_file: Path) -> dict[str, str] | None:
+	cmd = [
+		"ffmpeg",
+		"-v",
+		"info",
+		"-i",
+		str(audio_file),
+		"-af",
+		"replaygain",
+		"-f",
+		"null",
+		"-",
+	]
+	result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+	if result.returncode != 0:
+		raise RuntimeError(result.stderr.strip() or f"ffmpeg replaygain analyze failed with exit code {result.returncode}")
+
+	stderr_text = result.stderr or ""
+	gain_match = re.search(r"track_gain\s*=\s*([+-]?[0-9]+(?:\.[0-9]+)?)\s*dB", stderr_text)
+	peak_match = re.search(r"track_peak\s*=\s*([0-9]+(?:\.[0-9]+)?)", stderr_text)
+
+	if not gain_match or not peak_match:
+		return None
+
+	gain_db = float(gain_match.group(1))
+	peak = float(peak_match.group(1))
+	return {
+		"replaygain_track_gain": f"{gain_db:+.2f} dB",
+		"replaygain_track_peak": f"{peak:.6f}",
+	}
 
 
 def _resolve_playlist_name_from_db(playlist_folder: Path) -> str | None:
@@ -297,6 +330,22 @@ def cleanup_folder_metadata(
 				playlist_name=playlist_name,
 			)
 			did_change, before_tags, after_tags = _write_tags(audio_file, target_tags)
+
+			replay_tags = analyze_replaygain(audio_file)
+			if replay_tags:
+				did_replay_change, _, replay_after_tags = _write_tags(audio_file, replay_tags)
+				if did_replay_change:
+					did_change = True
+					after_tags = replay_after_tags
+					active_logger.debug(
+						"ReplayGain tags written id=%s file=%s tags=%s",
+						run_id,
+						audio_file,
+						json.dumps(replay_tags, ensure_ascii=False),
+					)
+			else:
+				active_logger.debug("ReplayGain analysis produced no tags for %s", audio_file)
+
 			perms_fixed = _ensure_group_readable(audio_file)
 			if did_change:
 				updated += 1
@@ -305,8 +354,8 @@ def cleanup_folder_metadata(
 					"Metadata cleanup file id=%s file=%s before=%s after=%s",
 					run_id,
 					audio_file,
-					json.dumps({key: before_tags.get(key) for key in (*REQUIRED_FIELDS, *NOISY_FIELDS)}, ensure_ascii=False),
-					json.dumps({key: after_tags.get(key) for key in (*REQUIRED_FIELDS, *NOISY_FIELDS)}, ensure_ascii=False),
+					json.dumps({key: before_tags.get(key) for key in (*REQUIRED_FIELDS, *NOISY_FIELDS, *REPLAY_FIELDS)}, ensure_ascii=False),
+					json.dumps({key: after_tags.get(key) for key in (*REQUIRED_FIELDS, *NOISY_FIELDS, *REPLAY_FIELDS)}, ensure_ascii=False),
 				)
 			else:
 				skipped += 1

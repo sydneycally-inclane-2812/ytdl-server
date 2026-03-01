@@ -42,6 +42,7 @@ celery.conf.beat_schedule = {
 # Data paths
 DATA_ROOT_PATH = homedir / Path(config[config["current"]]["root_dir"])
 DB_PATH = homedir / Path(config[config["current"]]["database_path"])
+TEMP_BASE_PATH = homedir / Path(config[config["current"]]["temp_dir"])
 logger_name = str(config[config["current"]].get("logger_name", "dev"))
 logger = logging.getLogger(logger_name)
 ARCHIVE_FILE_NAME = "archive.json"
@@ -225,6 +226,69 @@ def prune_info_json_files(playlist_folder: Path) -> int:
 	return removed
 
 
+def _finalize_playlist_sync(
+	owner: str,
+	playlist: str,
+	removed_ids: set[str],
+	missing_ids: set[str],
+	remote_ids: set[str],
+	local_ids_before: set[str],
+	playlist_temp_dir: Path,
+	downloaded_count: int,
+) -> dict:
+	playlist_folder = DATA_ROOT_PATH / owner / playlist
+	playlist_folder.mkdir(parents=True, exist_ok=True)
+
+	archive_map = load_archive_map(playlist_folder)
+	archive_map, removed_entries, removed_files = remove_ids_from_archive_and_disk(
+		playlist_folder,
+		archive_map,
+		removed_ids,
+	)
+
+	if playlist_temp_dir.exists() and any(playlist_temp_dir.iterdir()):
+		move_files_to_root(playlist_temp_dir, playlist_folder)
+	elif playlist_temp_dir.exists():
+		shutil.rmtree(playlist_temp_dir)
+
+	archive_map = merge_archive_with_info_files(playlist_folder, archive_map, missing_ids)
+	save_archive_map(playlist_folder, archive_map)
+	cleanup_stats = {"updated": 0, "skipped": 0, "failed": 0, "total": 0}
+	if downloaded_count > 0:
+		cleanup_stats = cleanup_folder_metadata(playlist_folder, recursive=False, logger=logger)
+	pruned_info_files = prune_info_json_files(playlist_folder)
+
+	logger.info(
+		"Sync complete for %s/%s: remote_ids=%d local_ids_before=%d missing=%d downloaded=%d cleanup_updated=%d cleanup_failed=%d removed_entries=%d removed_files=%d info_pruned=%d archive_entries=%d",
+		owner,
+		playlist,
+		len(remote_ids),
+		len(local_ids_before),
+		len(missing_ids),
+		downloaded_count,
+		cleanup_stats["updated"],
+		cleanup_stats["failed"],
+		removed_entries,
+		removed_files,
+		pruned_info_files,
+		len(archive_map),
+	)
+
+	asyncio.run(_update_playlist_db(owner, playlist))
+
+	return {
+		"status": "success",
+		"video_count": downloaded_count,
+		"removed_ids": len(removed_ids),
+		"removed_entries": removed_entries,
+		"removed_files": removed_files,
+		"missing_ids": len(missing_ids),
+		"cleanup_updated": cleanup_stats["updated"],
+		"cleanup_failed": cleanup_stats["failed"],
+		"archive_entries": len(archive_map),
+	}
+
+
 async def _update_playlist_db(owner: str, playlist: str):
 	async with aiosqlite.connect(DB_PATH) as db:
 		await db.execute(
@@ -272,78 +336,36 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 	Sync a playlist using archive.json as source of truth.
 	Downloads files to a unique temporary directory for the playlist, then moves them to the playlist folder.
 	"""
-	playlist_folder = DATA_ROOT_PATH / owner / playlist
-	playlist_folder.mkdir(parents=True, exist_ok=True)
 	removed_ids = removed_ids or []
 	playlist_url = url or f"https://www.youtube.com/playlist?list={playlist}"
-
-	# Get temp_dir from config and create a unique subdirectory for the playlist
-	temp_dir = Path(config[config["current"]]["temp_dir"])
-	playlist_temp_dir = temp_dir / f"{owner}_{playlist}"
+	playlist_temp_dir = TEMP_BASE_PATH / f"{owner}_{playlist}"
 	playlist_temp_dir.mkdir(parents=True, exist_ok=True)
 
 	try:
 		removed_id_set = set(removed_ids)
 		logger.debug("Starting sync for %s/%s with removed_ids=%d", owner, playlist, len(removed_id_set))
 
-		archive_map = load_archive_map(playlist_folder)
-		archive_map, removed_entries, removed_files = remove_ids_from_archive_and_disk(
-			playlist_folder,
-			archive_map,
-			removed_id_set,
-		)
-
 		remote_ids = extract_remote_playlist_ids(playlist_url)
+		playlist_folder = DATA_ROOT_PATH / owner / playlist
+		playlist_folder.mkdir(parents=True, exist_ok=True)
+		archive_map = load_archive_map(playlist_folder)
 		local_ids_before = set(archive_map.values())
 		missing_ids = remote_ids - local_ids_before
 		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
-
-		# Use the unique playlist_temp_dir for downloads
 		downloaded_count = download_missing_videos(playlist_temp_dir, missing_ids, album_name=playlist_name)
-
-		# Move files to the playlist folder after download
-		move_files_to_root(playlist_temp_dir, playlist_folder)
-
-		archive_map = merge_archive_with_info_files(playlist_folder, archive_map, missing_ids)
-		save_archive_map(playlist_folder, archive_map)
-		cleanup_stats = {"updated": 0, "skipped": 0, "failed": 0, "total": 0}
-		if downloaded_count > 0:
-			cleanup_stats = cleanup_folder_metadata(playlist_folder, recursive=False, logger=logger)
-		pruned_info_files = prune_info_json_files(playlist_folder)
-
-		logger.info(
-			"Sync complete for %s/%s: remote_ids=%d local_ids_before=%d missing=%d downloaded=%d cleanup_updated=%d cleanup_failed=%d removed_entries=%d removed_files=%d info_pruned=%d archive_entries=%d",
-			owner,
-			playlist,
-			len(remote_ids),
-			len(local_ids_before),
-			len(missing_ids),
-			downloaded_count,
-			cleanup_stats["updated"],
-			cleanup_stats["failed"],
-			removed_entries,
-			removed_files,
-			pruned_info_files,
-			len(archive_map),
+		return _finalize_playlist_sync(
+			owner=owner,
+			playlist=playlist,
+			removed_ids=removed_id_set,
+			missing_ids=missing_ids,
+			remote_ids=remote_ids,
+			local_ids_before=local_ids_before,
+			playlist_temp_dir=playlist_temp_dir,
+			downloaded_count=downloaded_count,
 		)
-
-		asyncio.run(_update_playlist_db(owner, playlist))
-
-		return {
-			"status": "success",
-			"video_count": downloaded_count,
-			"removed_ids": len(removed_ids),
-			"removed_entries": removed_entries,
-			"removed_files": removed_files,
-			"missing_ids": len(missing_ids),
-			"cleanup_updated": cleanup_stats["updated"],
-			"cleanup_failed": cleanup_stats["failed"],
-			"archive_entries": len(archive_map),
-		}
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)
 	finally:
-		# Clean up the temporary directory
 		if playlist_temp_dir.exists():
 			shutil.rmtree(playlist_temp_dir)
 
@@ -396,7 +418,7 @@ def sanitize() -> dict:
 @celery.task(bind=True, max_retries=3)
 def scan(self):
 	"""
-	Scan active playlists, diff remote IDs vs archive.json IDs, and queue sync tasks.
+	Scan active playlists, stage all downloads to temp, then finalize all sync updates.
 	"""
 	
 	try:
@@ -409,7 +431,7 @@ def scan(self):
 				return await cur.fetchall()
 
 		rows = asyncio.run(fetch_playlists())
-		queued = 0
+		changes: list[dict] = []
 		for row in rows:
 			owner = row["owner"]
 			playlist_id = row["playlist_id"]
@@ -438,10 +460,60 @@ def scan(self):
 			)
 
 			if new_ids or removed_ids:
-				sync.delay(owner, playlist_id, playlist_url, removed_ids)
-				queued += 1
+				changes.append({
+					"owner": owner,
+					"playlist_id": playlist_id,
+					"playlist_url": playlist_url,
+					"removed_ids": set(removed_ids),
+					"missing_ids": set(new_ids),
+					"remote_ids": remote_ids,
+					"local_ids_before": local_ids,
+				})
 
-		return {"status": "success", "queued": queued, "playlists": len(rows)}
+		if not changes:
+			return {"status": "success", "queued": 0, "playlists": len(rows), "mode": "batch"}
+
+		TEMP_BASE_PATH.mkdir(parents=True, exist_ok=True)
+		batch_root = Path(tempfile.mkdtemp(prefix="scan_batch_", dir=str(TEMP_BASE_PATH)))
+		finalized = 0
+		total_downloaded = 0
+		try:
+			for change in changes:
+				playlist_temp_dir = batch_root / change["owner"] / change["playlist_id"]
+				playlist_temp_dir.mkdir(parents=True, exist_ok=True)
+				playlist_name = asyncio.run(_get_playlist_name(change["owner"], change["playlist_id"]))
+				downloaded_count = download_missing_videos(
+					playlist_temp_dir,
+					change["missing_ids"],
+					album_name=playlist_name,
+				)
+				change["playlist_temp_dir"] = playlist_temp_dir
+				change["downloaded_count"] = downloaded_count
+				total_downloaded += downloaded_count
+
+			for change in changes:
+				_finalize_playlist_sync(
+					owner=change["owner"],
+					playlist=change["playlist_id"],
+					removed_ids=change["removed_ids"],
+					missing_ids=change["missing_ids"],
+					remote_ids=change["remote_ids"],
+					local_ids_before=change["local_ids_before"],
+					playlist_temp_dir=change["playlist_temp_dir"],
+					downloaded_count=change["downloaded_count"],
+				)
+				finalized += 1
+		finally:
+			if batch_root.exists():
+				shutil.rmtree(batch_root, ignore_errors=True)
+
+		return {
+			"status": "success",
+			"queued": finalized,
+			"playlists": len(rows),
+			"mode": "batch",
+			"downloaded": total_downloaded,
+		}
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)
 

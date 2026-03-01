@@ -2,14 +2,24 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$(cd "$SCRIPT_DIR/../src" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TARGET_DIR="$PROJECT_ROOT/src"
 cd "$TARGET_DIR"
 
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1 --reload &
+if ! command -v jq >/dev/null 2>&1; then
+	echo "jq not found in PATH." >&2
+	exit 1
+fi
+
+CONFIG_PATH="$PROJECT_ROOT/config/app_config.json"
+CURRENT_ENV="$(jq -r '.current' "$CONFIG_PATH")"
+PORT="$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8000' "$CONFIG_PATH")"
+
+uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --reload &
 UVICORN_PID=$!
-uv run celery -A celery_app worker --loglevel=info --pool=solo &
+uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=info --pool=solo &
 CELERY_PID=$!
-echo "Started uvicorn and celery, API available at http://0.0.0.0:8000"
+echo "Started uvicorn and celery, API available at http://0.0.0.0:$PORT"
 trap "kill $UVICORN_PID $CELERY_PID 2>/dev/null" EXIT
 wait -n
 exit $?
