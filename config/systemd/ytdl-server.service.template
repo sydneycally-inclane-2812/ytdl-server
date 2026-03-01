@@ -5,13 +5,17 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User={{USER}}
-Group={{GROUP}}
+User=root
+Group=ytdl
 WorkingDirectory={{WORKDIR}}
 Environment=PYTHONUNBUFFERED=1
+Environment=SERVER_USER=ytdl-uvicorn
+Environment=CELERY_USER=ytdl-celery
+Environment=GROUP_NAME=ytdl
 Environment=PATH=/root/.local/bin:{{WORKDIR}}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=RESTART_DELAY_SECONDS=2
 EnvironmentFile=-{{WORKDIR}}/.env
+ExecStartPre={{WORKDIR}}/scripts/create-users
 ExecStart={{WORKDIR}}/scripts/prod_startup
 Restart=always
 RestartSec=3

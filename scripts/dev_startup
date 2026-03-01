@@ -1,10 +1,126 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 TARGET_DIR="$PROJECT_ROOT/src"
 cd "$TARGET_DIR"
+
+SERVER_USER="${SERVER_USER:-ytdl-uvicorn}"
+CELERY_USER="${CELERY_USER:-ytdl-celery}"
+GROUP_NAME="${GROUP_NAME:-ytdl}"
+CREATE_USERS_SCRIPT="$PROJECT_ROOT/scripts/create-users"
+
+ensure_system_accounts() {
+	if [[ "${EUID}" -eq 0 ]]; then
+		bash "$CREATE_USERS_SCRIPT"
+	fi
+
+	if ! getent group "$GROUP_NAME" >/dev/null; then
+		echo "Missing group: $GROUP_NAME. Run as root so startup can create required users/groups." >&2
+		exit 1
+	fi
+
+	for user in "$SERVER_USER" "$CELERY_USER"; do
+		if ! id -u "$user" >/dev/null 2>&1; then
+			echo "Missing user: $user. Run as root so startup can create required users/groups." >&2
+			exit 1
+		fi
+	done
+
+	if [[ "${EUID}" -ne 0 ]]; then
+		echo "dev_startup must run as root to launch SERVER_USER=$SERVER_USER and CELERY_USER=$CELERY_USER" >&2
+		exit 1
+	fi
+}
+
+ensure_system_accounts
+
+grant_traverse_access() {
+	local user="$1"
+	local path="$2"
+
+	if command -v setfacl >/dev/null 2>&1; then
+		setfacl -m "u:${user}:x" "$path"
+		return
+	fi
+
+	chmod o+x "$path"
+}
+
+grant_file_access() {
+	local user="$1"
+	local path="$2"
+
+	if command -v setfacl >/dev/null 2>&1; then
+		setfacl -m "u:${user}:rx" "$path"
+		return
+	fi
+
+	chmod o+rx "$path"
+}
+
+grant_traverse_chain() {
+	local user="$1"
+	local dir_path="$2"
+	local current="$dir_path"
+
+	while true; do
+		grant_traverse_access "$user" "$current"
+		if [[ "$current" == "/" ]]; then
+			break
+		fi
+		current="$(dirname "$current")"
+	done
+}
+
+prepare_runtime_permissions() {
+	local user
+	for user in "$SERVER_USER" "$CELERY_USER"; do
+		local home_dir
+		home_dir="$(getent passwd "$user" | cut -d: -f6)"
+		install -d -o "$user" -g "$GROUP_NAME" -m 700 "$home_dir/.cache"
+		install -d -o "$user" -g "$GROUP_NAME" -m 700 "$home_dir/.cache/uv"
+	done
+
+	chgrp -R "$GROUP_NAME" "$PROJECT_ROOT"
+	find "$PROJECT_ROOT" -type d -exec chmod g+rx {} +
+	find "$PROJECT_ROOT" -type f -exec chmod g+r {} +
+
+	if [[ -d "$PROJECT_ROOT/.venv" ]]; then
+		chgrp -R "$GROUP_NAME" "$PROJECT_ROOT/.venv"
+		chmod -R g+rX "$PROJECT_ROOT/.venv"
+	fi
+
+	if [[ "$PROJECT_ROOT" == /root/* && ! -x /root ]]; then
+		grant_traverse_access "$SERVER_USER" /root
+		grant_traverse_access "$CELERY_USER" /root
+	fi
+
+	local venv_python
+	venv_python="$PROJECT_ROOT/.venv/bin/python3"
+	if [[ -e "$venv_python" ]]; then
+		local resolved_python
+		resolved_python="$(readlink -f "$venv_python" || true)"
+
+		for user in "$SERVER_USER" "$CELERY_USER"; do
+			grant_traverse_chain "$user" "$(dirname "$venv_python")"
+			grant_file_access "$user" "$venv_python"
+			if [[ -n "$resolved_python" ]]; then
+				grant_traverse_chain "$user" "$(dirname "$resolved_python")"
+				grant_file_access "$user" "$resolved_python"
+			fi
+		done
+	fi
+}
+
+prepare_runtime_permissions
+
+run_as_user() {
+	local user="$1"
+	shift
+	runuser -u "$user" -- "$@"
+}
 
 if ! command -v jq >/dev/null 2>&1; then
 	echo "jq not found in PATH." >&2
@@ -15,11 +131,11 @@ CONFIG_PATH="$PROJECT_ROOT/config/app_config.json"
 CURRENT_ENV="$(jq -r '.current' "$CONFIG_PATH")"
 PORT="$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8000' "$CONFIG_PATH")"
 
-uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --reload &
+run_as_user "$SERVER_USER" uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --reload &
 UVICORN_PID=$!
-uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=info --pool=solo &
+run_as_user "$CELERY_USER" uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=info --pool=solo &
 CELERY_PID=$!
-echo "Started uvicorn and celery, API available at http://0.0.0.0:$PORT"
+echo "Started uvicorn(user=$SERVER_USER) and celery(user=$CELERY_USER), API available at http://0.0.0.0:$PORT"
 trap "kill $UVICORN_PID $CELERY_PID 2>/dev/null" EXIT
 wait -n
 exit $?

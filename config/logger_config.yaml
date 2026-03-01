@@ -16,7 +16,7 @@ handlers:
   file_handler:
     class: logging.handlers.RotatingFileHandler
     level: DEBUG
-    filename: "test.log"
+    filename: "../logs/ytdl-server.log"
     formatter: extended
     
 loggers:
