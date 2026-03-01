@@ -145,6 +145,20 @@ resolve_config_path() {
 	fi
 }
 
+safe_chgrp() {
+	local path="$1"
+	if ! chgrp "$GROUP_NAME" "$path" 2>/dev/null; then
+		printf '[%s] Warning: chgrp failed for %s; continuing with read/write permission fallback\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$path" >&2
+	fi
+}
+
+safe_chgrp_recursive() {
+	local path="$1"
+	if ! chgrp -R "$GROUP_NAME" "$path" 2>/dev/null; then
+		printf '[%s] Warning: chgrp -R failed for %s; continuing with read/write permission fallback\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$path" >&2
+	fi
+}
+
 ensure_group_writable_dir() {
 	local path="$1"
 	if [[ -z "$path" ]]; then
@@ -152,7 +166,7 @@ ensure_group_writable_dir() {
 	fi
 
 	install -d -m 2775 "$path"
-	chgrp "$GROUP_NAME" "$path"
+	safe_chgrp "$path"
 	chmod g+rws "$path"
 	if command -v setfacl >/dev/null 2>&1; then
 		setfacl -m "g:${GROUP_NAME}:rwx" "$path"
@@ -194,33 +208,33 @@ prepare_runtime_permissions() {
 	ensure_group_writable_dir "$temp_root_dir"
 
 	install -m 664 /dev/null "$LOG_FILE_PATH"
-	chgrp "$GROUP_NAME" "$LOG_FILE_PATH"
+	safe_chgrp "$LOG_FILE_PATH"
 	chmod g+rw "$LOG_FILE_PATH"
 
-	chgrp -R "$GROUP_NAME" "$PROJECT_ROOT"
+	safe_chgrp_recursive "$PROJECT_ROOT"
 	find "$PROJECT_ROOT" -type d -exec chmod g+rx {} +
 	find "$PROJECT_ROOT" -type f -exec chmod g+r {} +
 
 	if [[ -n "$data_root_dir" && -d "$data_root_dir" ]]; then
-		chgrp -R "$GROUP_NAME" "$data_root_dir"
+		safe_chgrp_recursive "$data_root_dir"
 		find "$data_root_dir" -type d -exec chmod g+rws {} +
 		find "$data_root_dir" -type f -exec chmod g+rw {} +
 	fi
 
 	if [[ -n "$temp_root_dir" && -d "$temp_root_dir" ]]; then
-		chgrp -R "$GROUP_NAME" "$temp_root_dir"
+		safe_chgrp_recursive "$temp_root_dir"
 		find "$temp_root_dir" -type d -exec chmod g+rws {} +
 		find "$temp_root_dir" -type f -exec chmod g+rw {} +
 	fi
 
 	if [[ -n "$db_dir" && -d "$db_dir" ]]; then
-		chgrp -R "$GROUP_NAME" "$db_dir"
+		safe_chgrp_recursive "$db_dir"
 		find "$db_dir" -type d -exec chmod g+rws {} +
 		find "$db_dir" -type f -exec chmod g+rw {} +
 	fi
 
 	if [[ -d "$PROJECT_ROOT/.venv" ]]; then
-		chgrp -R "$GROUP_NAME" "$PROJECT_ROOT/.venv"
+		safe_chgrp_recursive "$PROJECT_ROOT/.venv"
 		chmod -R g+rX "$PROJECT_ROOT/.venv"
 	fi
 
