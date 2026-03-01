@@ -98,24 +98,22 @@ grant_traverse_access() {
 	local user="$1"
 	local path="$2"
 
-	if command -v setfacl >/dev/null 2>&1; then
-		setfacl -m "u:${user}:x" "$path"
+	if safe_setfacl -m "u:${user}:x" "$path"; then
 		return
 	fi
 
-	chmod o+x "$path"
+	safe_chmod o+x "$path"
 }
 
 grant_file_access() {
 	local user="$1"
 	local path="$2"
 
-	if command -v setfacl >/dev/null 2>&1; then
-		setfacl -m "u:${user}:rx" "$path"
+	if safe_setfacl -m "u:${user}:rx" "$path"; then
 		return
 	fi
 
-	chmod o+rx "$path"
+	safe_chmod o+rx "$path"
 }
 
 grant_traverse_chain() {
@@ -159,18 +157,43 @@ safe_chgrp_recursive() {
 	fi
 }
 
+safe_chmod() {
+	local mode="$1"
+	local path="$2"
+	if ! chmod "$mode" "$path" 2>/dev/null; then
+		printf '[%s] Warning: chmod %s failed for %s; continuing\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$mode" "$path" >&2
+	fi
+}
+
+safe_setfacl() {
+	if ! command -v setfacl >/dev/null 2>&1; then
+		return 1
+	fi
+
+	if ! setfacl "$@" 2>/dev/null; then
+		printf '[%s] Warning: setfacl failed (%s); continuing with chmod fallback\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >&2
+		return 1
+	fi
+
+	return 0
+}
+
 ensure_group_writable_dir() {
 	local path="$1"
 	if [[ -z "$path" ]]; then
 		return
 	fi
 
-	install -d -m 2775 "$path"
+	if ! mkdir -p "$path" 2>/dev/null; then
+		printf '[%s] Warning: mkdir -p failed for %s; continuing\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$path" >&2
+		return
+	fi
+
 	safe_chgrp "$path"
-	chmod g+rws "$path"
+	safe_chmod g+rws "$path"
 	if command -v setfacl >/dev/null 2>&1; then
-		setfacl -m "g:${GROUP_NAME}:rwx" "$path"
-		setfacl -d -m "g:${GROUP_NAME}:rwx" "$path"
+		safe_setfacl -m "g:${GROUP_NAME}:rwx" "$path" || true
+		safe_setfacl -d -m "g:${GROUP_NAME}:rwx" "$path" || true
 	fi
 }
 
@@ -197,8 +220,12 @@ prepare_runtime_permissions() {
 	for user in "$SERVER_USER" "$CELERY_USER"; do
 		local home_dir
 		home_dir="$(getent passwd "$user" | cut -d: -f6)"
-		install -d -o "$user" -g "$GROUP_NAME" -m 700 "$home_dir/.cache"
-		install -d -o "$user" -g "$GROUP_NAME" -m 700 "$home_dir/.cache/uv"
+		mkdir -p "$home_dir/.cache" 2>/dev/null || printf '[%s] Warning: could not create %s/.cache\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$home_dir" >&2
+		mkdir -p "$home_dir/.cache/uv" 2>/dev/null || printf '[%s] Warning: could not create %s/.cache/uv\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$home_dir" >&2
+		chown "$user:$GROUP_NAME" "$home_dir/.cache" 2>/dev/null || printf '[%s] Warning: chown failed for %s/.cache\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$home_dir" >&2
+		chown "$user:$GROUP_NAME" "$home_dir/.cache/uv" 2>/dev/null || printf '[%s] Warning: chown failed for %s/.cache/uv\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$home_dir" >&2
+		safe_chmod 700 "$home_dir/.cache"
+		safe_chmod 700 "$home_dir/.cache/uv"
 	done
 
 	ensure_group_writable_dir "$PROJECT_ROOT/logs"
@@ -207,35 +234,37 @@ prepare_runtime_permissions() {
 	ensure_group_writable_dir "$data_root_dir"
 	ensure_group_writable_dir "$temp_root_dir"
 
-	install -m 664 /dev/null "$LOG_FILE_PATH"
+	if [[ ! -e "$LOG_FILE_PATH" ]]; then
+		touch "$LOG_FILE_PATH" 2>/dev/null || printf '[%s] Warning: could not create log file %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$LOG_FILE_PATH" >&2
+	fi
 	safe_chgrp "$LOG_FILE_PATH"
-	chmod g+rw "$LOG_FILE_PATH"
+	safe_chmod g+rw "$LOG_FILE_PATH"
 
 	safe_chgrp_recursive "$PROJECT_ROOT"
-	find "$PROJECT_ROOT" -type d -exec chmod g+rx {} +
-	find "$PROJECT_ROOT" -type f -exec chmod g+r {} +
+	find "$PROJECT_ROOT" -type d -exec chmod g+rx {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT_ROOT" >&2
+	find "$PROJECT_ROOT" -type f -exec chmod g+r {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT_ROOT" >&2
 
 	if [[ -n "$data_root_dir" && -d "$data_root_dir" ]]; then
 		safe_chgrp_recursive "$data_root_dir"
-		find "$data_root_dir" -type d -exec chmod g+rws {} +
-		find "$data_root_dir" -type f -exec chmod g+rw {} +
+		find "$data_root_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
+		find "$data_root_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
 	fi
 
 	if [[ -n "$temp_root_dir" && -d "$temp_root_dir" ]]; then
 		safe_chgrp_recursive "$temp_root_dir"
-		find "$temp_root_dir" -type d -exec chmod g+rws {} +
-		find "$temp_root_dir" -type f -exec chmod g+rw {} +
+		find "$temp_root_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
+		find "$temp_root_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
 	fi
 
 	if [[ -n "$db_dir" && -d "$db_dir" ]]; then
 		safe_chgrp_recursive "$db_dir"
-		find "$db_dir" -type d -exec chmod g+rws {} +
-		find "$db_dir" -type f -exec chmod g+rw {} +
+		find "$db_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
+		find "$db_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
 	fi
 
 	if [[ -d "$PROJECT_ROOT/.venv" ]]; then
 		safe_chgrp_recursive "$PROJECT_ROOT/.venv"
-		chmod -R g+rX "$PROJECT_ROOT/.venv"
+		chmod -R g+rX "$PROJECT_ROOT/.venv" 2>/dev/null || printf '[%s] Warning: could not fully chmod %s/.venv\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$PROJECT_ROOT" >&2
 	fi
 
 	if [[ "$PROJECT_ROOT" == /root/* && ! -x /root ]]; then
