@@ -291,6 +291,75 @@ prepare_runtime_permissions() {
 
 prepare_runtime_permissions
 
+check_user_directory_access() {
+	local user="$1"
+	local path="$2"
+	local label="$3"
+
+	if [[ -z "$path" ]]; then
+		return 0
+	fi
+
+	if [[ ! -d "$path" ]]; then
+		echo "Required directory missing for ${label}: $path" >&2
+		return 1
+	fi
+
+	if ! runuser -u "$user" -- test -r "$path" || \
+		! runuser -u "$user" -- test -w "$path" || \
+		! runuser -u "$user" -- test -x "$path"; then
+		echo "User $user lacks rwx access to ${label}: $path" >&2
+		return 1
+	fi
+
+	if ! runuser -u "$user" -- env CHECK_DIR="$path" sh -c 'probe="$CHECK_DIR/.permcheck.$$"; : > "$probe" && rm -f "$probe"'; then
+		echo "User $user cannot create files in ${label}: $path" >&2
+		return 1
+	fi
+
+	return 0
+}
+
+validate_runtime_writable_access() {
+	local current_env
+	current_env="$(jq -r '.current // empty' "$CONFIG_PATH")"
+	if [[ -z "$current_env" ]]; then
+		echo "Missing .current in $CONFIG_PATH" >&2
+		exit 1
+	fi
+
+	local configured_root_dir configured_temp_dir configured_database_path
+	configured_root_dir="$(jq -r --arg env "$current_env" '.[$env].root_dir // empty' "$CONFIG_PATH")"
+	configured_temp_dir="$(jq -r --arg env "$current_env" '.[$env].temp_dir // empty' "$CONFIG_PATH")"
+	configured_database_path="$(jq -r --arg env "$current_env" '.[$env].database_path // empty' "$CONFIG_PATH")"
+
+	local data_root_dir temp_root_dir db_path db_dir log_dir
+	data_root_dir="$(resolve_config_path "$configured_root_dir")"
+	temp_root_dir="$(resolve_config_path "$configured_temp_dir")"
+	db_path="$(resolve_config_path "$configured_database_path")"
+	db_dir="$(dirname "$db_path")"
+	log_dir="$(dirname "$LOG_FILE_PATH")"
+
+	local failed=0
+
+	check_user_directory_access "$SERVER_USER" "$data_root_dir" "data root" || failed=1
+	check_user_directory_access "$SERVER_USER" "$temp_root_dir" "temp root" || failed=1
+	check_user_directory_access "$SERVER_USER" "$db_dir" "database directory" || failed=1
+	check_user_directory_access "$SERVER_USER" "$log_dir" "log directory" || failed=1
+
+	check_user_directory_access "$CELERY_USER" "$data_root_dir" "data root" || failed=1
+	check_user_directory_access "$CELERY_USER" "$temp_root_dir" "temp root" || failed=1
+	check_user_directory_access "$CELERY_USER" "$db_dir" "database directory" || failed=1
+	check_user_directory_access "$CELERY_USER" "$CELERY_RUNTIME_DIR" "celery runtime directory" || failed=1
+
+	if [[ "$failed" -ne 0 ]]; then
+		echo "Runtime permissions are insufficient for non-root service users. Fix path ownership/ACLs for $SERVER_USER and $CELERY_USER, then restart." >&2
+		exit 1
+	fi
+}
+
+validate_runtime_writable_access
+
 # Parse the json to find the configured port for the current environment, defaulting to 8080 if not set 
 CURRENT_ENV="$(jq -r '.current' "$CONFIG_PATH")"
 PORT="$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8080' "$CONFIG_PATH")"
@@ -330,7 +399,9 @@ run_with_restart() {
 	while true; do
 		log "Starting ${name}"
 		local exit_code=0
-		if ! "$@"; then
+		if "$@"; then
+			exit_code=0
+		else
 			exit_code=$?
 		fi
 		log "${name} exited with code ${exit_code}; restarting in ${RESTART_DELAY_SECONDS}s"
