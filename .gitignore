@@ -16,3 +16,4 @@ wheels/
 **/*.log
 cookies.txt
 **/*.db
+.cache/

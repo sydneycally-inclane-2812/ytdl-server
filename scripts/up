@@ -1,0 +1,133 @@
+# Simple dev startup script to run the server and celery workers in the foreground.
+#!/bin/bash
+set -euo pipefail
+
+# Get project root directory
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
+cd "$PROJECT_ROOT/src"
+echo "Working directory: $(pwd)"
+
+# Load environment variables if .env exists
+if [[ -f "$PROJECT_ROOT/.env" ]]; then
+	set -a
+	source "$PROJECT_ROOT/.env"
+	set +a
+	echo "Loaded environment variables from .env"
+fi
+
+# Setup user, group, permissions, and dependencies:
+bash "$PROJECT_ROOT/scripts/setup-user.sh"
+
+# Ensure PATH includes uv and ffmpeg
+export PATH="/root/.local/bin:$PROJECT_ROOT/.venv/bin:/usr/local/bin:$PATH"
+echo "Updated PATH to include uv and ffmpeg locations."
+
+# create shared cache path
+mkdir -p /var/cache/ytdl-server/uv
+chown -R root:ytdl /var/cache/ytdl-server
+chmod -R 2775 /var/cache/ytdl-server
+export UV_CACHE_DIR="/var/cache/ytdl-server/uv"
+
+# Verify uv is available
+if ! command -v uv >/dev/null 2>&1; then
+	echo "Error: uv not found in PATH. Install uv first." >&2
+	exit 1
+fi
+echo "Found uv at: $(command -v uv)"
+
+# Verify ffmpeg is available
+if ! command -v ffmpeg >/dev/null 2>&1; then
+	echo "Error: ffmpeg not found in PATH. Install ffmpeg first." >&2
+	exit 1
+fi
+echo "Found ffmpeg at: $(command -v ffmpeg)"
+
+# Run uv sync to install dependencies
+echo "Running uv sync..."
+uv sync
+
+# Ensure cookie file is writable by service group
+COOKIE_FILE="$PROJECT_ROOT/src/cookies.txt"
+if [[ ! -f "$COOKIE_FILE" ]]; then
+	touch "$COOKIE_FILE"
+fi
+chown root:ytdl "$COOKIE_FILE"
+chmod 660 "$COOKIE_FILE"
+echo "Configured cookie file permissions at $COOKIE_FILE (660, root:ytdl)."
+
+# Set permissions on PROJECT_ROOT
+chmod 1770 "$PROJECT_ROOT"
+echo "Set permissions on $PROJECT_ROOT to 1770."
+
+# Make data_root and temp_root directories, owned by root:ytdl, chmod 1776
+CONFIG_FILE="$PROJECT_ROOT/config/app_config.json"
+if ! command -v jq >/dev/null 2>&1; then
+	echo "Error: jq not found. Install jq to parse config." >&2
+	exit 1
+fi
+CURRENT_ENV=$(jq -r '.current // "prod"' "$CONFIG_FILE")
+DATA_ROOT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].root_dir // "data"' "$CONFIG_FILE")
+TEMP_ROOT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].temp_dir // "temp"' "$CONFIG_FILE")
+PORT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8080' "$CONFIG_FILE")
+if [[ "$DATA_ROOT" != /* ]]; then
+	DATA_ROOT="$PROJECT_ROOT/$DATA_ROOT"
+fi
+if [[ "$TEMP_ROOT" != /* ]]; then
+	TEMP_ROOT="$PROJECT_ROOT/$TEMP_ROOT"
+fi
+mkdir -p "$DATA_ROOT" "$TEMP_ROOT"
+chown root:ytdl "$DATA_ROOT" "$TEMP_ROOT"
+chmod 1776 "$DATA_ROOT"
+chmod 1776 "$TEMP_ROOT"
+echo "Created and configured data and temp directories."
+
+# Ensure celery runtime directory exists
+CELERY_RUNTIME_DIR="$PROJECT_ROOT/logs/celery"
+CELERY_BEAT_SCHEDULE="$CELERY_RUNTIME_DIR/celerybeat-schedule"
+mkdir -p "$CELERY_RUNTIME_DIR"
+chown root:ytdl "$CELERY_RUNTIME_DIR"
+chmod 2770 "$CELERY_RUNTIME_DIR"
+
+# Trap signals for cleanup
+PIDS=()
+cleanup() {
+	echo "Shutting down services..."
+	for pid in "${PIDS[@]}"; do
+		kill "$pid" 2>/dev/null || true
+	done
+	wait
+	# Purge celery beat schedule on shutdown to avoid stale schedules
+	if [[ -f "$CELERY_BEAT_SCHEDULE" ]]; then
+		rm -f "$CELERY_BEAT_SCHEDULE"
+		echo "Removed celery beat schedule at $CELERY_BEAT_SCHEDULE"
+	fi
+	# Purge database on shutdown to avoid startup updates
+
+	echo "All services stopped."
+	exit 0
+}
+trap cleanup INT TERM EXIT
+
+# Start Celery worker as ytdl-celery
+echo "Starting Celery worker as ytdl-celery..."
+runuser -u ytdl-celery -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=INFO --pool=solo &
+PIDS+=("$!")
+
+# Start Celery beat as ytdl-celery
+echo "Starting Celery beat as ytdl-celery..."
+runuser -u ytdl-celery -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" celery -A celery_app beat --loglevel=INFO --schedule "$CELERY_BEAT_SCHEDULE" &
+PIDS+=("$!")
+
+# Start FastAPI server as ytdl-server
+echo "Starting FastAPI server as ytdl-server on port $PORT..."
+runuser -u ytdl-uvicorn -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --log-level info &
+PIDS+=("$!")
+
+echo "All services started."
+echo "  Celery worker PID: ${PIDS[0]}"
+echo "  Celery beat PID: ${PIDS[1]}"
+echo "  Uvicorn server PID: ${PIDS[2]}"
+
+# Wait for all processes, kill all on exit
+wait

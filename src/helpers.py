@@ -90,6 +90,7 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 
 	album_tag = (album_name or "").strip()
 	album_meta_source = album_tag if album_tag else "%(playlist_title,playlist,uploader,channel,creator)s"
+	cookie_file = str(homedir / "src" / "cookies.txt")
 
 	ytdl_opts = {
 		"format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
@@ -106,7 +107,7 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 		"concurrent_fragment_downloads": 4,
 		"sleep_interval": sleep_interval,
 		"max_sleep_interval": max_sleep_interval,
-		"cookiefile": "cookies.txt",
+		"cookiefile": cookie_file,
 		"writeinfojson": True,
 		"writethumbnail": True,
 		"parse_metadata": [

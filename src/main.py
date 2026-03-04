@@ -103,6 +103,13 @@ async def lifespan(app: FastAPI):
 		user_count = (await cur.fetchone())
 		logger.info(f"User table row count: {user_count[0]}")
 
+	# chmod DB_PATH to 760
+	try:
+		os.chmod(DB_PATH, 0o760)
+		logger.info("Updated database permissions to 760 at %s", DB_PATH)
+	except Exception as e:
+		logger.error("Failed to chmod database path %s: %s", DB_PATH, e)
+	
 	# Celery placeholder
 	try:
 		app.state.celery = Celery("ytdl")

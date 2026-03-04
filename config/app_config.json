@@ -5,11 +5,11 @@
 		"database_path": ".database/database.db",
 		"redis_url": "redis://localhost:6379",
 		"logging_pattern": "dev",
-		"sleep_interval": 2,
-		"max_sleep_interval": 4,
+		"sleep_interval": 1,
+		"max_sleep_interval": 2,
 		"postprocessing_trim_silence_seconds": null,
 		"port": 8080,
-		"scan_wait": 5,
+		"scan_wait": 15,
 		"scan_wait_extra_maximum": 1
 	},
 	"prod": {
@@ -22,8 +22,8 @@
 		"max_sleep_interval": 3,
 		"postprocessing_trim_silence_seconds": 1,
 		"port": 8080,
-		"scan_wait": 10,
+		"scan_wait": 15,
 		"scan_wait_extra_maximum": 2
 	},
-	"current": "prod"
+	"current": "dev"
 }

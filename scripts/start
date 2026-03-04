@@ -1,0 +1,129 @@
+#!/bin/bash
+set -euo pipefail
+
+# This bash script initializes the server as a systemd service. Tasks include:
+# - Start as root to ensure necessary system accounts and permissions are set up
+# - Creating users ytdl-server and ytdl-celery if they don't exist
+# - Creating a group ytdl and adding the users to it
+# - Set cwd at file_location.parent.parent, resolving at ytdl-server
+# - Make the directory cwd owned by root and group-owned by ytdl to allow database update access
+# - Make sure PATH has uv and ffmpeg
+# - uv sync
+# - chmod 770 cwd
+# - Parse ../config/config.yaml to get data root and temp root
+# - mkdir -p data_root and temp_root, owned by root:ytdl, chmod 1776
+# - Write systemd service file to call server.sh, which runs the server and celery workers as their respective users
+# Note: This script should be run as root to ensure proper permissions and user setup. It is designed to be used in a systemd service file for managing the server process.
+
+# Check if running as root
+if [[ "${EUID}" -ne 0 ]]; then
+	echo "This script must be run as root" >&2
+	exit 1
+fi
+
+# Start as root
+# Runs apt update and install packages
+apt update
+apt install -y ffmpeg redis jq
+
+# Get cwd at file_location.parent.parent, resolving at ytdl-server
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
+cd "$PROJECT_ROOT"
+echo "Changed working directory to $(pwd)."
+
+# Shared uv cache inside project root
+UV_CACHE_DIR="$PROJECT_ROOT/.cache/uv"
+mkdir -p "$UV_CACHE_DIR"
+chown -R root:ytdl "$PROJECT_ROOT/.cache"
+chmod 2775 "$PROJECT_ROOT/.cache" "$UV_CACHE_DIR"
+export UV_CACHE_DIR
+
+# Verify uv is available
+if ! command -v uv >/dev/null 2>&1; then
+	echo "Error: uv not found in PATH. Install uv first." >&2
+	exit 1
+fi
+echo "Found uv at: $(command -v uv)"
+
+# Ensure PATH includes uv and ffmpeg
+export PATH="/root/.local/bin:$PROJECT_ROOT/.venv/bin:/usr/local/bin:$PATH"
+echo "Updated PATH to include uv and ffmpeg locations."
+
+# Verify ffmpeg is available
+if ! command -v ffmpeg >/dev/null 2>&1; then
+	echo "Error: ffmpeg not found in PATH. Install ffmpeg first." >&2
+	exit 1
+fi
+echo "Found ffmpeg at: $(command -v ffmpeg)"
+
+# Run uv sync to install dependencies
+echo "Running uv sync..."
+uv sync
+echo "Dependencies installed."
+
+# Runs scripts/create-user to set up users and groups
+bash "$PROJECT_ROOT/scripts/setup-user.sh"
+
+# Make PROJECT_ROOT owned by root and group-owned by ytdl
+chown root:ytdl "$PROJECT_ROOT"
+echo "Set ownership of $PROJECT_ROOT to root:ytdl."
+
+# Set permissions on PROJECT_ROOT
+chmod 2770 "$PROJECT_ROOT"
+echo "Set permissions on $PROJECT_ROOT to 2770."
+
+# Parse config to get data root and temp root
+CONFIG_FILE="$PROJECT_ROOT/config/app_config.json"
+if ! command -v jq >/dev/null 2>&1; then
+	echo "Error: jq not found. Install jq to parse config." >&2
+	exit 1
+fi
+
+CURRENT_ENV=$(jq -r '.current // "prod"' "$CONFIG_FILE")
+DATA_ROOT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].root_dir // empty' "$CONFIG_FILE")
+TEMP_ROOT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].temp_dir // empty' "$CONFIG_FILE")
+PORT=$(jq -r --arg env "$CURRENT_ENV" '.[$env].port // 8080' "$CONFIG_FILE")
+
+# Resolve relative paths
+if [[ "$DATA_ROOT" != /* ]]; then
+	DATA_ROOT="$PROJECT_ROOT/$DATA_ROOT"
+fi
+if [[ "$TEMP_ROOT" != /* ]]; then
+	TEMP_ROOT="$PROJECT_ROOT/$TEMP_ROOT"
+fi
+
+echo "Current environment: $CURRENT_ENV"
+echo "Data root: $DATA_ROOT"
+echo "Temp root: $TEMP_ROOT"
+echo "Port: $PORT"
+
+# Create data and temp directories with proper permissions
+mkdir -p "$DATA_ROOT"
+mkdir -p "$TEMP_ROOT"
+chown root:ytdl "$DATA_ROOT"
+chown root:ytdl "$TEMP_ROOT"
+chmod 1776 "$DATA_ROOT"
+chmod 1776 "$TEMP_ROOT"
+echo "Created and configured data and temp directories."
+
+# Write systemd service file
+SERVICE_FILE="/etc/systemd/system/ytdl-server.service"
+# Load template from PROJECT_ROOT/config/ytdl-server.service.template
+TEMPLATE_FILE="$PROJECT_ROOT/config/ytdl-server.service.template"
+if [[ ! -f "$TEMPLATE_FILE" ]]; then
+	echo "Error: Service template file not found at $TEMPLATE_FILE" >&2
+	exit 1
+fi
+SERVICE_CONTENT=$(<"$TEMPLATE_FILE")
+# Replace placeholders in template
+SERVICE_CONTENT=${SERVICE_CONTENT//\{\{PROJECT_ROOT\}\}/$PROJECT_ROOT}
+SERVICE_CONTENT=${SERVICE_CONTENT//\{\{PORT\}\}/$PORT}
+# Write service file
+echo "$SERVICE_CONTENT" > "$SERVICE_FILE"
+chmod 644 "$SERVICE_FILE"
+echo "Written systemd service file to $SERVICE_FILE."
+echo "Initialization complete. You can now start the ytdl-server service with: systemctl start ytdl-server"
+
+
+
