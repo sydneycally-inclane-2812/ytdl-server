@@ -192,6 +192,7 @@ ensure_group_writable_dir() {
 
 	safe_chgrp "$path"
 	safe_chmod g+rws "$path"
+	safe_chmod o+rw "$path"
 	if command -v setfacl >/dev/null 2>&1; then
 		safe_setfacl -m "g:${GROUP_NAME}:rwx" "$path" || true
 		safe_setfacl -d -m "g:${GROUP_NAME}:rwx" "$path" || true
@@ -247,20 +248,20 @@ prepare_runtime_permissions() {
 
 	if [[ -n "$data_root_dir" && -d "$data_root_dir" ]]; then
 		safe_chgrp_recursive "$data_root_dir"
-		find "$data_root_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
-		find "$data_root_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
+		find "$data_root_dir" -type d -exec chmod g+rws,o+rwx {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
+		find "$data_root_dir" -type f -exec chmod g+rw,o+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$data_root_dir" >&2
 	fi
 
 	if [[ -n "$temp_root_dir" && -d "$temp_root_dir" ]]; then
 		safe_chgrp_recursive "$temp_root_dir"
-		find "$temp_root_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
-		find "$temp_root_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
+		find "$temp_root_dir" -type d -exec chmod g+rws,o+rwx {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
+		find "$temp_root_dir" -type f -exec chmod g+rw,o+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$temp_root_dir" >&2
 	fi
 
 	if [[ -n "$db_dir" && -d "$db_dir" ]]; then
 		safe_chgrp_recursive "$db_dir"
-		find "$db_dir" -type d -exec chmod g+rws {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
-		find "$db_dir" -type f -exec chmod g+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
+		find "$db_dir" -type d -exec chmod g+rws,o+rwx {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod directories under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
+		find "$db_dir" -type f -exec chmod g+rw,o+rw {} + 2>/dev/null || printf '[%s] Warning: could not fully chmod files under %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$db_dir" >&2
 	fi
 
 	if [[ -d "$PROJECT_ROOT/.venv" ]]; then
