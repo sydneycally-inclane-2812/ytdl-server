@@ -30,6 +30,8 @@ def _current_runtime_config() -> dict:
 def _build_audio_filter_chain(trim_silence_seconds) -> str | None:
 	if not isinstance(trim_silence_seconds, (int, float)):
 		trim_seconds = 0
+	else:
+		trim_seconds = trim_silence_seconds
 	filters: list[str] = []
 
 	if trim_seconds is not None and trim_seconds > 0:
