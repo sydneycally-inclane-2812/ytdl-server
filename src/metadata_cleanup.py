@@ -272,7 +272,7 @@ def _write_tags(audio_file: Path, target_tags: dict[str, str]) -> tuple[bool, di
 
 def _ensure_group_readable(audio_file: Path) -> bool:
 	current_mode = audio_file.stat().st_mode & 0o777
-	desired_mode = current_mode | 0o640
+	desired_mode = current_mode | 0o644
 	if desired_mode == current_mode:
 		return False
 	audio_file.chmod(desired_mode)

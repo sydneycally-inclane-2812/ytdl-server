@@ -199,8 +199,14 @@ def move_files_to_root(temp_dir: Path, root_dir: Path):
 		dest = root_dir / item.name
 		if item.is_dir():
 			shutil.move(str(item), str(dest))
+			# Set permissions for MP3 files in moved directory
+			for mp3_file in dest.rglob("*.mp3"):
+				mp3_file.chmod(0o644)
 		else:
 			shutil.copy2(str(item), str(dest))
+			# Set permissions if it's an MP3 file
+			if dest.suffix.lower() == ".mp3":
+				dest.chmod(0o644)
 	shutil.rmtree(temp_dir)
 
 
