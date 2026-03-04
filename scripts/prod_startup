@@ -34,6 +34,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
+UMask=0002
 Type=simple
 User=root
 Group=root
