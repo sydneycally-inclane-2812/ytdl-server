@@ -8,6 +8,7 @@ set -euo pipefail
 # - Set cwd at file_location.parent.parent, resolving at ytdl-server
 # - Make the directory cwd owned by root and group-owned by ytdl to allow database update access
 # - Make sure PATH has uv and ffmpeg
+# - Make cookies 770
 # - uv sync
 # - chmod 770 cwd
 # - Parse ../config/config.yaml to get data root and temp root
@@ -32,11 +33,14 @@ PROJECT_ROOT=$(dirname "$SCRIPT_DIR")
 cd "$PROJECT_ROOT"
 echo "Changed working directory to $(pwd)."
 
-# Shared uv cache inside project root
-UV_CACHE_DIR="$PROJECT_ROOT/.cache/uv"
+# Runs scripts/create-user to set up users and groups
+bash "$PROJECT_ROOT/scripts/setup-user.sh"
+
+# Shared uv cache directory
+UV_CACHE_DIR="/var/cache/ytdl-server/uv"
 mkdir -p "$UV_CACHE_DIR"
-chown -R root:ytdl "$PROJECT_ROOT/.cache"
-chmod 2775 "$PROJECT_ROOT/.cache" "$UV_CACHE_DIR"
+chown -R root:ytdl /var/cache/ytdl-server
+chmod -R 2775 /var/cache/ytdl-server
 export UV_CACHE_DIR
 
 # Verify uv is available
@@ -62,16 +66,22 @@ echo "Running uv sync..."
 uv sync
 echo "Dependencies installed."
 
-# Runs scripts/create-user to set up users and groups
-bash "$PROJECT_ROOT/scripts/setup-user.sh"
+# Ensure cookie file is writable by service group
+COOKIE_FILE="$PROJECT_ROOT/src/cookies.txt"
+if [[ ! -f "$COOKIE_FILE" ]]; then
+	touch "$COOKIE_FILE"
+fi
+chown root:ytdl "$COOKIE_FILE"
+chmod 660 "$COOKIE_FILE"
+echo "Configured cookie file permissions at $COOKIE_FILE (660, root:ytdl)."
 
 # Make PROJECT_ROOT owned by root and group-owned by ytdl
 chown root:ytdl "$PROJECT_ROOT"
 echo "Set ownership of $PROJECT_ROOT to root:ytdl."
 
 # Set permissions on PROJECT_ROOT
-chmod 2770 "$PROJECT_ROOT"
-echo "Set permissions on $PROJECT_ROOT to 2770."
+chmod 1770 "$PROJECT_ROOT"
+echo "Set permissions on $PROJECT_ROOT to 1770."
 
 # Parse config to get data root and temp root
 CONFIG_FILE="$PROJECT_ROOT/config/app_config.json"
@@ -110,7 +120,7 @@ echo "Created and configured data and temp directories."
 # Write systemd service file
 SERVICE_FILE="/etc/systemd/system/ytdl-server.service"
 # Load template from PROJECT_ROOT/config/ytdl-server.service.template
-TEMPLATE_FILE="$PROJECT_ROOT/config/ytdl-server.service.template"
+TEMPLATE_FILE="$PROJECT_ROOT/config/systemd/ytdl-server.service.template"
 if [[ ! -f "$TEMPLATE_FILE" ]]; then
 	echo "Error: Service template file not found at $TEMPLATE_FILE" >&2
 	exit 1

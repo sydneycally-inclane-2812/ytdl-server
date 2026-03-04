@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+
+# Stops the server when run by start. Uses systemctl to stop the ytdl-server service. Should be run as root to ensure proper permissions.
+# Check if running as root
+if [[ "${EUID}" -ne 0 ]]; then
+	echo "This script must be run as root" >&2
+	exit 1
+fi
+echo "Stopping ytdl-server service..."
+systemctl stop ytdl-server
+echo "ytdl-server service stopped."

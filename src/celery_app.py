@@ -48,6 +48,9 @@ logger = logging.getLogger(logger_name)
 ARCHIVE_FILE_NAME = "archive.json"
 
 def load_archive_map(playlist_folder: Path) -> dict[str, str]:
+	'''
+	Load the archive.json file inside a playlist folder
+	'''
 	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	if not archive_path.exists():
 		logger.debug("No archive map at %s", archive_path)
@@ -75,6 +78,9 @@ def load_archive_map(playlist_folder: Path) -> dict[str, str]:
 
 
 def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None:
+	'''
+	Saves the archive.json file to tmp first, then mergin it back to the main copy.
+	'''
 	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	temp_path = playlist_folder / ".archive.json.tmp"
 	temp_path.write_text(json.dumps(archive_map, ensure_ascii=False, indent=2) + "\n")
@@ -83,6 +89,9 @@ def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None
 
 
 def extract_remote_playlist_ids(playlist_url: str) -> set[str]:
+	'''
+	Pokes remote playlist id to get playlist content
+	'''
 	opts = {
 		"quiet": True,
 		"skip_download": True,

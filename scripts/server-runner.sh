@@ -33,6 +33,13 @@ if ! command -v uv >/dev/null 2>&1; then
 	exit 1
 fi
 
+# Shared uv cache directory
+UV_CACHE_DIR="/var/cache/ytdl-server/uv"
+mkdir -p "$UV_CACHE_DIR"
+chown -R root:ytdl /var/cache/ytdl-server
+chmod -R 2775 /var/cache/ytdl-server
+export UV_CACHE_DIR
+
 # Parse config
 CONFIG_FILE="$PROJECT_ROOT/config/app_config.json"
 if ! command -v jq >/dev/null 2>&1; then
@@ -69,15 +76,15 @@ trap cleanup INT TERM EXIT
 
 # Start Celery worker as ytdl-celery
 echo "Starting Celery worker as ytdl-celery..."
-runuser -u ytdl-celery -- uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=INFO --pool=solo &
+runuser -u ytdl-celery -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" celery -A celery_app worker --loglevel=INFO --pool=solo &
 
 # Start Celery beat as ytdl-celery
 echo "Starting Celery beat as ytdl-celery..."
-runuser -u ytdl-celery -- uv run --project "$PROJECT_ROOT" celery -A celery_app beat --loglevel=INFO --schedule "$CELERY_BEAT_SCHEDULE" &
+runuser -u ytdl-celery -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" celery -A celery_app beat --loglevel=INFO --schedule "$CELERY_BEAT_SCHEDULE" &
 
 # Start FastAPI server as ytdl-server
 echo "Starting FastAPI server as ytdl-server on port $PORT..."
-runuser -u ytdl-server -- uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 &
-
+runuser -u ytdl-uvicorn -- env UV_CACHE_DIR="$UV_CACHE_DIR" uv run --project "$PROJECT_ROOT" uvicorn main:app --host 0.0.0.0 --port "$PORT" --workers 1 --log-level info &
+	
 # Wait for all processes
 wait

@@ -7,7 +7,6 @@ import shutil
 import sqlite3
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-
 from fastapi import HTTPException
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
@@ -28,18 +27,9 @@ def _current_runtime_config() -> dict:
 	return {}
 
 
-def _numeric_or_none(value) -> float | None:
-	if value is None:
-		return None
-	if isinstance(value, bool):
-		return None
-	if isinstance(value, (int, float)):
-		return float(value)
-	return None
-
-
 def _build_audio_filter_chain(trim_silence_seconds) -> str | None:
-	trim_seconds = _numeric_or_none(trim_silence_seconds)
+	if not isinstance(trim_silence_seconds, (int, float)):
+		trim_silence_seconds = 0
 	filters: list[str] = []
 
 	if trim_seconds is not None and trim_seconds > 0:
@@ -82,6 +72,7 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 	sleep_interval = runtime_config.get("sleep_interval", 3)
 	max_sleep_interval = runtime_config.get("max_sleep_interval", 6)
 	audio_filter_chain = _build_audio_filter_chain(runtime_config.get("postprocessing_trim_silence_seconds"))
+	use_cookies = runtime_config.get("cookies", False)
 
 	if not isinstance(sleep_interval, (int, float)):
 		sleep_interval = 3
@@ -90,7 +81,7 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 
 	album_tag = (album_name or "").strip()
 	album_meta_source = album_tag if album_tag else "%(playlist_title,playlist,uploader,channel,creator)s"
-	cookie_file = str(homedir / "src" / "cookies.txt")
+	cookie_file = str(homedir / "cookies" / "cookies.txt") if use_cookies else None
 
 	ytdl_opts = {
 		"format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
