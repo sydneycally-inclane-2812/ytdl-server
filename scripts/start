@@ -67,7 +67,7 @@ uv sync
 echo "Dependencies installed."
 
 # Ensure cookie file is writable by service group
-COOKIE_FILE="$PROJECT_ROOT/src/cookies.txt"
+COOKIE_FILE="$PROJECT_ROOT/cookies/cookies.txt"
 if [[ ! -f "$COOKIE_FILE" ]]; then
 	touch "$COOKIE_FILE"
 fi
