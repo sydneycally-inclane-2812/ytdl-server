@@ -100,7 +100,7 @@ See [config/README.md](config/README.md) for detailed configuration options.
 
 Start the development server:
 ```bash
-./scripts/dev_startup
+./scripts/up
 ```
 
 ### Production
@@ -115,8 +115,11 @@ sudo systemctl start ytdl-server
 
 2. Or use the production startup script:
 ```bash
-./scripts/prod_startup
-# Once up, exit to let it run in the background.
+./scripts/start
+# Once up, stop service with either
+systemctl stop ytdl-server
+# Or
+./scripts/stop
 ```
 
 ### API Endpoints
