@@ -209,9 +209,10 @@ def build_target_tags(
 		"album": album,
 		"album_artist": album_artist,
 		"track": track,
+		"date": "2025",
 	}
 
-	for optional_key in ("genre", "date", "disc"):
+	for optional_key in ("genre", "disc"):
 		value = _normalize(tags.get(optional_key))
 		if value:
 			target[optional_key] = value
