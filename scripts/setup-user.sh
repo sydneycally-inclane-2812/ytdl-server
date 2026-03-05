@@ -8,7 +8,7 @@ if ! id -u ytdl-celery >/dev/null 2>&1; then
 	useradd -u 3637 -r -s /bin/false ytdl-celery
 fi
 if ! getent group ytdl >/dev/null 2>&1; then
-	groupadd ytdl
+	groupadd -g 3638 ytdl
 fi
 usermod -aG ytdl ytdl-uvicorn
 usermod -aG ytdl ytdl-celery
