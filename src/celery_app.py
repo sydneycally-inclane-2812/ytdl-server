@@ -351,9 +351,13 @@ def merge_archive_with_info_files(
 			continue
 
 		stem = info_path.stem.replace(".info", "")
+		prefix = f"{stem}."
 		candidates = [
-			path for path in playlist_folder.glob(f"{stem}.*")
-			if path != info_path and path.suffix.lower() not in {".json", ".part", ".ytdl"}
+			path for path in playlist_folder.iterdir()
+			if path.is_file()
+			and path != info_path
+			and path.name.startswith(prefix)
+			and path.suffix.lower() not in {".json", ".part", ".ytdl"}
 		]
 		selected_media = _pick_media_file(candidates)
 		if not selected_media:
