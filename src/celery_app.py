@@ -47,6 +47,35 @@ logger_name = str(config[config["current"]].get("logger_name", "dev"))
 logger = logging.getLogger(logger_name)
 ARCHIVE_FILE_NAME = "archive.json"
 
+# Scan-Sync process, compressed into a single job because well having them separated doesn't help in this case.
+# For celery schedule, create an enqueue_all task that fetches all playlists from database then queues the syncing of all playlists.
+# Scan:
+# - Fetch remote playlist information
+# - Check if local copy exist
+# 	- If yes, continue
+# 	- If not, create folder and archive.json. Set permissions to 2770
+# - Scan local copy to make sure all files are accounted for in archive.json
+# 	- If file missing: throw warning, remove from archive.json
+# 	- If extra file found: throw warning, remove from main copy
+# - Process remote playlist information to a list of target = (title, url). Maintain order.
+# - Compare with local copy in archive.json
+# - Get diff to find remove and download ids
+# - If none, exit
+# Sync: 
+# - Scan main copy
+# - Remove all titles with id in remove list
+# - Create a directory in temp with format <user>_<playlist_id>
+# - Download all download ids to it with ytdlp
+# 	- If download fails, skip and remove from target list
+# - Update metadata of ids
+# - Copy back to main copy
+# - Update archive.json to be the latest version
+# - Update main copy playlist item's metadata with the correct track number as they appear in target.json
+# - Remove folder in temp
+
+
+# Update: Set all year to 2025 so music players don't complain they're not from the same year and put in different folders.
+
 def load_archive_map(playlist_folder: Path) -> dict[str, str]:
 	'''
 	Load the archive.json file inside a playlist folder
