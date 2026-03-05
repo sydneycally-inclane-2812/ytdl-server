@@ -14,7 +14,7 @@ import dotenv
 import json
 import sys
 from helpers import validate_true_playlist_url, check_playlist_accessible
-from celery_app import scan
+from celery_app import enqueue_all
 
 homedir = Path(__file__).parent.parent.resolve()
 with open(homedir / "config" / "app_config.json", "r") as f:
@@ -472,19 +472,20 @@ async def update_dependencies():
 		"results": results,
 	}
 
-@app.post("/api/tasks/scan")
-async def trigger_scan():
+@app.post("/api/tasks/enqueue")
+async def trigger_enqueue_all():
 	"""
-	Trigger a scan across all active playlists.
+	Trigger enqueue-all sync across active playlists.
 	"""
 	logger = app.state.logger
 	try:
-		task = scan.delay()
-		logger.info("Queued scan task %s", task.id)
+		task = enqueue_all.delay()
+		logger.info("Queued enqueue-all task %s", task.id)
 		return {
 			"status": "queued",
 			"task_id": task.id,
+			"mode": "enqueue_all",
 		}
 	except Exception:
-		logger.exception("Error triggering scan")
-		raise HTTPException(status_code=500, detail="Failed to trigger scan")
+		logger.exception("Error triggering enqueue-all")
+		raise HTTPException(status_code=500, detail="Failed to trigger enqueue-all")

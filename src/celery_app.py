@@ -3,13 +3,11 @@ import json
 import logging
 import random
 import shutil
-import tempfile
 from datetime import timedelta
 from pathlib import Path
 
 import aiosqlite
 from celery import Celery
-from celery.schedules import crontab
 from yt_dlp import YoutubeDL
 
 from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts, move_files_to_root
@@ -67,19 +65,25 @@ ARCHIVE_FILE_NAME = "archive.json"
 # - Create a directory in temp with format <user>_<playlist_id>
 # - Download all download ids to it with ytdlp
 # 	- If download fails, skip and remove from target list
-# - Update metadata of ids
-# - Copy back to main copy
+# - Update metadata of ids, all except track index
+# - Copy back to main copy. Don't need to finish all playlists, just do it once one playlist is ready for copy.
 # - Update archive.json to be the latest version
-# - Update main copy playlist item's metadata with the correct track number as they appear in target.json
+# - Update main copy playlist item's track index with the correct order as they appear in target.json
 # - Remove folder in temp
-
 
 # Update: Set all year to 2025 so music players don't complain they're not from the same year and put in different folders.
 
 def load_archive_map(playlist_folder: Path) -> dict[str, str]:
-	'''
-	Load the archive.json file inside a playlist folder
-	'''
+	"""
+	Load archive mappings from a playlist folder.
+
+	Input:
+		playlist_folder: Folder containing archive.json.
+	Purpose:
+		Read archive.json and return filename -> video_id mappings.
+	Output:
+		A sanitized mapping of filename to video ID.
+	"""
 	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	if not archive_path.exists():
 		logger.debug("No archive map at %s", archive_path)
@@ -107,9 +111,17 @@ def load_archive_map(playlist_folder: Path) -> dict[str, str]:
 
 
 def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None:
-	'''
-	Saves the archive.json file to tmp first, then mergin it back to the main copy.
-	'''
+	"""
+	Persist archive mappings atomically.
+
+	Input:
+		playlist_folder: Folder containing archive.json.
+		archive_map: filename -> video_id mapping to persist.
+	Purpose:
+		Write archive.json via a temp file to avoid partial writes.
+	Output:
+		None.
+	"""
 	archive_path = playlist_folder / ARCHIVE_FILE_NAME
 	temp_path = playlist_folder / ".archive.json.tmp"
 	temp_path.write_text(json.dumps(archive_map, ensure_ascii=False, indent=2) + "\n")
@@ -117,29 +129,106 @@ def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None
 	logger.debug("Saved archive map entries=%d to %s", len(archive_map), archive_path)
 
 
-def extract_remote_playlist_ids(playlist_url: str) -> set[str]:
-	'''
-	Pokes remote playlist id to get playlist content
-	'''
+def extract_remote_playlist_targets(playlist_url: str) -> list[dict[str, str]]:
+	"""
+	Fetch ordered remote playlist targets.
+
+	Input:
+		playlist_url: Source playlist URL.
+	Purpose:
+		Fetch playlist entries and keep their remote order.
+	Output:
+		Ordered list of {id, title, url} objects.
+	"""
 	opts = {
 		"quiet": True,
 		"skip_download": True,
 		"extract_flat": True,
 		"ignoreerrors": True,
 	}
+	#Process remote playlist information to a list of target = (title, url). Maintain order.
 	with YoutubeDL(opts) as ydl:
 		info = ydl.extract_info(playlist_url, download=False)
 		entries = info.get("entries", []) if info else []
-		remote_ids = {entry["id"] for entry in entries if entry and entry.get("id")}
+		targets: list[dict[str, str]] = []
+		for entry in entries:
+			if not entry:
+				continue
+			video_id = entry.get("id")
+			if not isinstance(video_id, str) or not video_id:
+				continue
+			title = str(entry.get("title") or video_id)
+			targets.append({
+				"id": video_id,
+				"title": title,
+				"url": f"https://www.youtube.com/watch?v={video_id}",
+			})
 
-	logger.debug("Remote playlist ids fetched=%d from %s", len(remote_ids), playlist_url)
-	return remote_ids
+	logger.debug("Remote playlist targets fetched=%d from %s", len(targets), playlist_url)
+	return targets
+
+
+def _ensure_playlist_copy(playlist_folder: Path) -> None:
+	"""Ensure playlist folder and archive.json exist with expected permissions."""
+	playlist_folder.mkdir(parents=True, exist_ok=True)
+	try:
+		playlist_folder.chmod(0o2770)
+	except Exception:
+		logger.warning("Failed setting permissions on playlist folder %s", playlist_folder, exc_info=True)
+
+	archive_path = playlist_folder / ARCHIVE_FILE_NAME
+	if not archive_path.exists():
+		save_archive_map(playlist_folder, {})
+		try:
+			archive_path.chmod(0o660)
+		except Exception:
+			logger.warning("Failed setting permissions on archive map %s", archive_path, exc_info=True)
+
+
+def _reconcile_local_archive(playlist_folder: Path, archive_map: dict[str, str]) -> tuple[dict[str, str], int, int]:
+	"""Reconcile archive entries and local media files for a playlist folder."""
+	updated_archive = dict(archive_map)
+	removed_archive_entries = 0
+	removed_extra_files = 0
+
+	for filename in list(updated_archive.keys()):
+		file_path = playlist_folder / filename
+		if file_path.exists():
+			continue
+		logger.warning("Archive entry points to missing file, removing from archive.json: %s", file_path)
+		del updated_archive[filename]
+		removed_archive_entries += 1
+
+	mapped_files = set(updated_archive.keys())
+	for media_file in sorted(path for path in playlist_folder.glob("*.mp3") if path.is_file()):
+		if media_file.name in mapped_files:
+			continue
+		logger.warning("Unmapped local file found, deleting from main copy: %s", media_file)
+		try:
+			media_file.unlink()
+			removed_extra_files += 1
+		except Exception:
+			logger.warning("Failed deleting extra local file %s", media_file, exc_info=True)
+
+	return updated_archive, removed_archive_entries, removed_extra_files
 
 def remove_ids_from_archive_and_disk(
 	playlist_folder: Path,
 	archive_map: dict[str, str],
 	removed_ids: set[str],
 ) -> tuple[dict[str, str], int, int]:
+	"""
+	Remove tracks from disk and archive map by video IDs.
+
+	Input:
+		playlist_folder: Playlist directory.
+		archive_map: Current filename -> video_id mappings.
+		removed_ids: Video IDs to remove.
+	Purpose:
+		Delete mapped media files and delete corresponding archive entries.
+	Output:
+		(updated_archive, removed_entries_count, removed_files_count)
+	"""
 	updated_archive = dict(archive_map)
 	removed_entries = 0
 	removed_files = 0
@@ -177,27 +266,45 @@ def remove_ids_from_archive_and_disk(
 	return updated_archive, removed_entries, removed_files
 
 
-def download_missing_videos(temp_dir: Path, missing_ids: set[str], album_name: str | None = None) -> int:
-    if not missing_ids:
-        return 0
+def download_missing_videos(
+	temp_dir: Path,
+	missing_targets: list[dict[str, str]],
+	album_name: str | None = None,
+) -> set[str]:
+	"""
+	Download missing tracks to a temporary playlist directory.
 
-    logger.debug("Downloading missing videos count=%d in %s", len(missing_ids), temp_dir)
-    logger.info("Using metadata pipeline version=%s for %s", METADATA_PIPELINE_VERSION, temp_dir)
-    options = get_ytdl_opts(temp_dir, playlist_folder=False, album_name=album_name)  # Pass temp_dir here
-    success = 0
-    with YoutubeDL(options) as ydl:
-        for video_id in sorted(missing_ids):
-            video_url = f"https://www.youtube.com/watch?v={video_id}"
-            try:
-                ydl.extract_info(video_url, download=True)
-                success += 1
-                logger.debug("Downloaded missing video id=%s", video_id)
-            except Exception:
-                logger.warning("Failed downloading video id=%s", video_id, exc_info=True)
+	Input:
+		temp_dir: Staging directory for downloads.
+		missing_targets: Ordered list of target entries ({id,title,url}) to download.
+		album_name: Optional album override passed to yt-dlp options.
+	Purpose:
+		Download only missing remote tracks and track successful IDs.
+	Output:
+		Set of successfully downloaded video IDs.
+	"""
+	if not missing_targets:
+		return set()
 
-    return success
+	logger.debug("Downloading missing videos count=%d in %s", len(missing_targets), temp_dir)
+	logger.info("Using metadata pipeline version=%s for %s", METADATA_PIPELINE_VERSION, temp_dir)
+	options = get_ytdl_opts(temp_dir, playlist_folder=False, album_name=album_name)
+	successful_ids: set[str] = set()
+	with YoutubeDL(options) as ydl:
+		for target in missing_targets:
+			video_id = target["id"]
+			video_url = target["url"]
+			try:
+				ydl.extract_info(video_url, download=True)
+				successful_ids.add(video_id)
+				logger.debug("Downloaded missing video id=%s", video_id)
+			except Exception:
+				logger.warning("Failed downloading video id=%s", video_id, exc_info=True)
+
+	return successful_ids
 
 def _pick_media_file(candidates: list[Path]) -> Path | None:
+	"""Pick the best media file candidate for an info file."""
 	if not candidates:
 		return None
 	mp3_candidates = [candidate for candidate in candidates if candidate.suffix.lower() == ".mp3"]
@@ -210,6 +317,18 @@ def merge_archive_with_info_files(
 	archive_map: dict[str, str],
 	expected_ids: set[str],
 ) -> dict[str, str]:
+	"""
+	Merge downloaded info.json files into archive mappings.
+
+	Input:
+		playlist_folder: Playlist directory.
+		archive_map: Current filename -> video_id mappings.
+		expected_ids: Downloaded IDs expected to have info files.
+	Purpose:
+		Map downloaded files to IDs using info sidecar files.
+	Output:
+		Updated archive map with added mappings for matched media files.
+	"""
 	updated_archive = dict(archive_map)
 	matched_ids: set[str] = set()
 
@@ -252,6 +371,16 @@ def merge_archive_with_info_files(
 	return updated_archive
 
 def prune_info_json_files(playlist_folder: Path) -> int:
+	"""
+	Delete info sidecar files in a playlist directory.
+
+	Input:
+		playlist_folder: Playlist directory.
+	Purpose:
+		Remove *.info.json files after sync finalization.
+	Output:
+		Number of removed sidecar files.
+	"""
 	removed = 0
 	for info_path in playlist_folder.glob("*.info.json"):
 		try:
@@ -268,66 +397,91 @@ def _finalize_playlist_sync(
 	owner: str,
 	playlist: str,
 	removed_ids: set[str],
-	missing_ids: set[str],
-	remote_ids: set[str],
+	remote_target_ids: list[str],
 	local_ids_before: set[str],
 	playlist_temp_dir: Path,
-	downloaded_count: int,
+	successful_download_ids: set[str],
+	reconciliation_archive_removed: int,
+	reconciliation_files_removed: int,
 ) -> dict:
+	"""Finalize one playlist sync by applying staged files and writing final archive state."""
 	playlist_folder = DATA_ROOT_PATH / owner / playlist
-	playlist_folder.mkdir(parents=True, exist_ok=True)
+	_ensure_playlist_copy(playlist_folder)
 
+	#Scan main copy.
 	archive_map = load_archive_map(playlist_folder)
+	archive_map, scan_archive_removed, scan_extra_files_removed = _reconcile_local_archive(playlist_folder, archive_map)
+
+	#Remove all titles with id in remove list.
 	archive_map, removed_entries, removed_files = remove_ids_from_archive_and_disk(
 		playlist_folder,
 		archive_map,
 		removed_ids,
 	)
 
+	#Copy back to main copy.
 	if playlist_temp_dir.exists() and any(playlist_temp_dir.iterdir()):
 		move_files_to_root(playlist_temp_dir, playlist_folder)
 	elif playlist_temp_dir.exists():
 		shutil.rmtree(playlist_temp_dir)
 
-	archive_map = merge_archive_with_info_files(playlist_folder, archive_map, missing_ids)
-	save_archive_map(playlist_folder, archive_map)
-	cleanup_stats = {"updated": 0, "skipped": 0, "failed": 0, "total": 0}
-	if downloaded_count > 0:
-		cleanup_stats = cleanup_folder_metadata(playlist_folder, recursive=False, logger=logger)
+	archive_map = merge_archive_with_info_files(playlist_folder, archive_map, successful_download_ids)
+
+	#Update archive.json to be the latest version.
+	ordered_archive: dict[str, str] = {}
+	for target_id in remote_target_ids:
+		for filename, video_id in archive_map.items():
+			if video_id != target_id:
+				continue
+			file_path = playlist_folder / filename
+			if not file_path.exists():
+				continue
+			ordered_archive[filename] = video_id
+			break
+	save_archive_map(playlist_folder, ordered_archive)
+
+	#Update main copy playlist item's metadata with the correct track number as they appear in target.json.
+	cleanup_stats = cleanup_folder_metadata(playlist_folder, recursive=False, logger=logger)
+
+	#Remove folder in temp.
 	pruned_info_files = prune_info_json_files(playlist_folder)
 
 	logger.info(
-		"Sync complete for %s/%s: remote_ids=%d local_ids_before=%d missing=%d downloaded=%d cleanup_updated=%d cleanup_failed=%d removed_entries=%d removed_files=%d info_pruned=%d archive_entries=%d",
+		"Sync complete for %s/%s: remote_targets=%d local_ids_before=%d downloaded=%d cleanup_updated=%d cleanup_failed=%d removed_entries=%d removed_files=%d scan_archive_removed=%d scan_extra_files_removed=%d pre_scan_archive_removed=%d pre_scan_files_removed=%d info_pruned=%d archive_entries=%d",
 		owner,
 		playlist,
-		len(remote_ids),
+		len(remote_target_ids),
 		len(local_ids_before),
-		len(missing_ids),
-		downloaded_count,
+		len(successful_download_ids),
 		cleanup_stats["updated"],
 		cleanup_stats["failed"],
 		removed_entries,
 		removed_files,
+		scan_archive_removed,
+		scan_extra_files_removed,
+		reconciliation_archive_removed,
+		reconciliation_files_removed,
 		pruned_info_files,
-		len(archive_map),
+		len(ordered_archive),
 	)
 
 	asyncio.run(_update_playlist_db(owner, playlist))
 
 	return {
 		"status": "success",
-		"video_count": downloaded_count,
+		"video_count": len(successful_download_ids),
 		"removed_ids": len(removed_ids),
 		"removed_entries": removed_entries,
 		"removed_files": removed_files,
-		"missing_ids": len(missing_ids),
+		"missing_ids": len(successful_download_ids),
 		"cleanup_updated": cleanup_stats["updated"],
 		"cleanup_failed": cleanup_stats["failed"],
-		"archive_entries": len(archive_map),
+		"archive_entries": len(ordered_archive),
 	}
 
 
 async def _update_playlist_db(owner: str, playlist: str):
+	"""Mark a playlist active after successful sync finalization."""
 	async with aiosqlite.connect(DB_PATH) as db:
 		await db.execute(
 			"UPDATE playlist SET active = 1 WHERE playlist_id = ? AND owner = ?",
@@ -337,6 +491,7 @@ async def _update_playlist_db(owner: str, playlist: str):
 
 
 async def _get_playlist_name(owner: str, playlist: str) -> str | None:
+	"""Fetch playlist name from DB for metadata tagging."""
 	async with aiosqlite.connect(DB_PATH) as db:
 		db.row_factory = aiosqlite.Row
 		cur = await db.execute(
@@ -351,15 +506,25 @@ async def _get_playlist_name(owner: str, playlist: str) -> str | None:
 
 @celery.task
 def schedule_scan():
+	"""
+	Schedule the enqueue-all task with configured jitter.
+
+	Input:
+		None.
+	Purpose:
+		Apply scan cadence jitter before queueing playlist sync tasks.
+	Output:
+		Dictionary with scheduling metadata.
+	"""
 	extra_minutes = max(0, scan_wait_extra_maximum_minutes)
 	countdown_seconds = random.randint(0, extra_minutes * 60) if extra_minutes else 0
 	logger.info(
-		"Scheduling scan with jitter countdown_seconds=%d base_minutes=%d extra_max_minutes=%d",
+		"Scheduling enqueue_all with jitter countdown_seconds=%d base_minutes=%d extra_max_minutes=%d",
 		countdown_seconds,
 		scan_wait_minutes,
 		extra_minutes,
 	)
-	scan.apply_async(countdown=countdown_seconds)
+	enqueue_all.apply_async(countdown=countdown_seconds)
 	return {
 		"scheduled": True,
 		"countdown_seconds": countdown_seconds,
@@ -369,37 +534,92 @@ def schedule_scan():
 
 
 @celery.task(bind=True, max_retries=3)
-def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: list[str] | None = None):
+def sync(self, owner: str, playlist: str, url: str | None = None):
 	"""
-	Sync a playlist using archive.json as source of truth.
-	Downloads files to a unique temporary directory for the playlist, then moves them to the playlist folder.
+	Sync a single playlist using the scan-sync workflow.
+
+	Input:
+		owner: Playlist owner.
+		playlist: Playlist ID.
+		url: Optional playlist URL override.
+	Purpose:
+		Fetch remote playlist state, diff against local archive, and apply download/delete sync.
+	Output:
+		Dictionary summarizing sync actions and cleanup counters.
 	"""
-	removed_ids = removed_ids or []
+	#Fetching remote playlist information.
 	playlist_url = url or f"https://www.youtube.com/playlist?list={playlist}"
 	playlist_temp_dir = TEMP_BASE_PATH / f"{owner}_{playlist}"
-	playlist_temp_dir.mkdir(parents=True, exist_ok=True)
 
 	try:
-		removed_id_set = set(removed_ids)
-		logger.debug("Starting sync for %s/%s with removed_ids=%d", owner, playlist, len(removed_id_set))
+		remote_targets = extract_remote_playlist_targets(playlist_url)
+		remote_target_ids = [target["id"] for target in remote_targets]
+		remote_id_set = set(remote_target_ids)
 
-		remote_ids = extract_remote_playlist_ids(playlist_url)
+		#Check if local copy exist.
 		playlist_folder = DATA_ROOT_PATH / owner / playlist
-		playlist_folder.mkdir(parents=True, exist_ok=True)
+		_ensure_playlist_copy(playlist_folder)
+
+		#Scan local copy to make sure all files are accounted for in archive.json.
 		archive_map = load_archive_map(playlist_folder)
+		archive_map, reconciliation_archive_removed, reconciliation_files_removed = _reconcile_local_archive(
+			playlist_folder,
+			archive_map,
+		)
+		if reconciliation_archive_removed or reconciliation_files_removed:
+			save_archive_map(playlist_folder, archive_map)
+
+		#Compare with local copy in archive.json.
 		local_ids_before = set(archive_map.values())
-		missing_ids = remote_ids - local_ids_before
+
+		#Get diff to find remove and download ids.
+		removed_id_set = local_ids_before - remote_id_set
+		missing_ids = remote_id_set - local_ids_before
+
+		#If none, exit.
+		if not removed_id_set and not missing_ids:
+			return {
+				"status": "success",
+				"mode": "noop",
+				"owner": owner,
+				"playlist": playlist,
+				"removed_ids": 0,
+				"missing_ids": 0,
+			}
+
+		#Create a directory in temp with format <user>_<playlist_id>.
+		playlist_temp_dir.mkdir(parents=True, exist_ok=True)
+
+		#Download all download ids to it with ytdlp.
 		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
-		downloaded_count = download_missing_videos(playlist_temp_dir, missing_ids, album_name=playlist_name)
+		missing_targets = [target for target in remote_targets if target["id"] in missing_ids]
+		successful_download_ids = download_missing_videos(
+			playlist_temp_dir,
+			missing_targets,
+			album_name=playlist_name,
+		)
+
+		#If download fails, skip and remove from target list.
+		failed_download_ids = missing_ids - successful_download_ids
+		if failed_download_ids:
+			logger.warning(
+				"Skipping failed downloads from target list for %s/%s ids=%s",
+				owner,
+				playlist,
+				sorted(failed_download_ids),
+			)
+		remote_target_ids = [video_id for video_id in remote_target_ids if video_id not in failed_download_ids]
+
 		return _finalize_playlist_sync(
 			owner=owner,
 			playlist=playlist,
 			removed_ids=removed_id_set,
-			missing_ids=missing_ids,
-			remote_ids=remote_ids,
+			remote_target_ids=remote_target_ids,
 			local_ids_before=local_ids_before,
 			playlist_temp_dir=playlist_temp_dir,
-			downloaded_count=downloaded_count,
+			successful_download_ids=successful_download_ids,
+			reconciliation_archive_removed=reconciliation_archive_removed,
+			reconciliation_files_removed=reconciliation_files_removed,
 		)
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)
@@ -411,6 +631,14 @@ def sync(self, owner: str, playlist: str, url: str | None = None, removed_ids: l
 def validate(owner: str, playlist: str) -> dict:
 	"""
 	Validate local playlist integrity and report issues.
+
+	Input:
+		owner: Playlist owner.
+		playlist: Playlist ID.
+	Purpose:
+		Check local files for simple integrity issues.
+	Output:
+		Dictionary with issue list.
 	"""
 	playlist_folder = DATA_ROOT_PATH / owner / playlist
 	issues: list[dict] = []
@@ -428,6 +656,13 @@ def validate(owner: str, playlist: str) -> dict:
 def sanitize() -> dict:
 	"""
 	Delete local data for inactive playlists or deactivated users.
+
+	Input:
+		None.
+	Purpose:
+		Remove local folders for playlists/users that are inactive in the DB.
+	Output:
+		Dictionary with removed playlist count.
 	"""
 	removed = 0
 
@@ -453,12 +688,19 @@ def sanitize() -> dict:
 
 	return {"status": "success", "removed_playlists": removed}
 
+
 @celery.task(bind=True, max_retries=3)
-def scan(self):
+def enqueue_all(self):
 	"""
-	Scan active playlists, stage all downloads to temp, then finalize all sync updates.
+	Queue sync tasks for all active playlists.
+
+	Input:
+		None.
+	Purpose:
+		Fetch active playlists from DB and enqueue one sync task per playlist.
+	Output:
+		Dictionary containing queued task count.
 	"""
-	
 	try:
 		async def fetch_playlists():
 			async with aiosqlite.connect(DB_PATH) as db:
@@ -469,88 +711,23 @@ def scan(self):
 				return await cur.fetchall()
 
 		rows = asyncio.run(fetch_playlists())
-		changes: list[dict] = []
+		queued = 0
 		for row in rows:
 			owner = row["owner"]
 			playlist_id = row["playlist_id"]
 			playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
-
-			validation = validate(owner, playlist_id)
-			if validation["issues"]:
-				logger.info("Validation issues for %s/%s: %s", owner, playlist_id, validation["issues"])
-
-			playlist_folder = DATA_ROOT_PATH / owner / playlist_id
-			playlist_folder.mkdir(parents=True, exist_ok=True)
-			archive_map = load_archive_map(playlist_folder)
-			local_ids = set(archive_map.values())
-			remote_ids = extract_remote_playlist_ids(playlist_url)
-
-			removed_ids = list(local_ids - remote_ids)
-			new_ids = remote_ids - local_ids
-			logger.debug(
-				"Scan diff for %s/%s: local_ids=%d remote_ids=%d new_ids=%d removed_ids=%d",
-				owner,
-				playlist_id,
-				len(local_ids),
-				len(remote_ids),
-				len(new_ids),
-				len(removed_ids),
-			)
-
-			if new_ids or removed_ids:
-				changes.append({
-					"owner": owner,
-					"playlist_id": playlist_id,
-					"playlist_url": playlist_url,
-					"removed_ids": set(removed_ids),
-					"missing_ids": set(new_ids),
-					"remote_ids": remote_ids,
-					"local_ids_before": local_ids,
-				})
-
-		if not changes:
-			return {"status": "success", "queued": 0, "playlists": len(rows), "mode": "batch"}
-
-		TEMP_BASE_PATH.mkdir(parents=True, exist_ok=True)
-		batch_root = Path(tempfile.mkdtemp(prefix="scan_batch_", dir=str(TEMP_BASE_PATH)))
-		finalized = 0
-		total_downloaded = 0
-		try:
-			for change in changes:
-				playlist_temp_dir = batch_root / change["owner"] / change["playlist_id"]
-				playlist_temp_dir.mkdir(parents=True, exist_ok=True)
-				playlist_name = asyncio.run(_get_playlist_name(change["owner"], change["playlist_id"]))
-				downloaded_count = download_missing_videos(
-					playlist_temp_dir,
-					change["missing_ids"],
-					album_name=playlist_name,
-				)
-				change["playlist_temp_dir"] = playlist_temp_dir
-				change["downloaded_count"] = downloaded_count
-				total_downloaded += downloaded_count
-
-			for change in changes:
-				_finalize_playlist_sync(
-					owner=change["owner"],
-					playlist=change["playlist_id"],
-					removed_ids=change["removed_ids"],
-					missing_ids=change["missing_ids"],
-					remote_ids=change["remote_ids"],
-					local_ids_before=change["local_ids_before"],
-					playlist_temp_dir=change["playlist_temp_dir"],
-					downloaded_count=change["downloaded_count"],
-				)
-				finalized += 1
-		finally:
-			if batch_root.exists():
-				shutil.rmtree(batch_root, ignore_errors=True)
+			sync.apply_async(kwargs={
+				"owner": owner,
+				"playlist": playlist_id,
+				"url": playlist_url,
+			})
+			queued += 1
 
 		return {
 			"status": "success",
-			"queued": finalized,
+			"queued": queued,
 			"playlists": len(rows),
-			"mode": "batch",
-			"downloaded": total_downloaded,
+			"mode": "enqueue_all",
 		}
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)
