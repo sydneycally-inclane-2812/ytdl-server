@@ -151,6 +151,16 @@ checks/       # Health check scripts
 python -m pytest test/
 ```
 
+### Notes on deployment
+This code was originally written in a linux container in Proxmox, deployed in another Proxmox container. 
+- Permissions are pretty much all handled by `scripts/start` and `scripts/up`, but if you used a passed through drive as storage, make sure to create the folders on host beforehand and set the right permissions to the right gid. Example:
+``` bash
+# GID is set to 3638 for ytdl group
+setfacl -R -m u:103638:rx /srv/shared/ytdl
+setfacl -R -d -m u:103638:rx /srv/shared/ytdl
+```
+Be smart and use setfacl, don't waste 5 hours fixing permissions like me.
+
 ## Dependencies
 
 - **FastAPI + Uvicorn**: REST API server
