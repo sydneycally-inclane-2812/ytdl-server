@@ -1,2 +1,5 @@
 - [ ] Implement metadata version check and update mechanism. 
 - [x] Fix year to 2025 always to avoid playlists having issue with it.
+- [ ] Fix retry mechanism for disconnect with more aggressive backoff
+- [ ] Fix bug where data seems to get deleted upon failed connections
+- [ ] Suppress ytdlp logs
