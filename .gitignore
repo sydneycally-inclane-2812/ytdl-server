@@ -17,3 +17,4 @@ wheels/
 cookies.txt
 **/*.db
 .cache/
+/config/app_config.json
