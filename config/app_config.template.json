@@ -11,7 +11,8 @@
                 "postprocessing_trim_silence_seconds": null,
                 "port": 8080,
                 "scan_wait": 15,
-                "scan_wait_extra_maximum": 1
+                "scan_wait_extra_maximum": 1,
+				"suppress_logs": false
         },
         "prod": {
                 "root_dir": "",
@@ -25,7 +26,8 @@
                 "postprocessing_trim_silence_seconds": 1,
                 "port": 8080,
                 "scan_wait": 20,
-                "scan_wait_extra_maximum": 10
+                "scan_wait_extra_maximum": 10,
+				"suppress_logs": true
         },
         "current": "prod"
 }

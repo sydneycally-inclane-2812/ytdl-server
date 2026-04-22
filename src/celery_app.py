@@ -270,6 +270,7 @@ def download_missing_videos(
 	temp_dir: Path,
 	missing_targets: list[dict[str, str]],
 	album_name: str | None = None,
+	suppress_logs: bool = True
 ) -> set[str]:
 	"""
 	Download missing tracks to a temporary playlist directory.
@@ -288,7 +289,7 @@ def download_missing_videos(
 
 	logger.debug("Downloading missing videos count=%d in %s", len(missing_targets), temp_dir)
 	logger.info("Using metadata pipeline version=%s for %s", METADATA_PIPELINE_VERSION, temp_dir)
-	options = get_ytdl_opts(temp_dir, playlist_folder=False, album_name=album_name)
+	options = get_ytdl_opts(temp_dir, playlist_folder=False, album_name=album_name, suppress_logs=suppress_logs)
 	successful_ids: set[str] = set()
 	with YoutubeDL(options) as ydl:
 		for target in missing_targets:
@@ -597,10 +598,12 @@ def sync(self, owner: str, playlist: str, url: str | None = None):
 		#Download all download ids to it with ytdlp.
 		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
 		missing_targets = [target for target in remote_targets if target["id"] in missing_ids]
+		suppress_logs = bool(config.get(config.get("current", ""), {}).get("suppress_logs", True))
 		successful_download_ids = download_missing_videos(
 			playlist_temp_dir,
 			missing_targets,
 			album_name=playlist_name,
+			suppress_logs=suppress_logs,
 		)
 
 		#If download fails, skip and remove from target list.

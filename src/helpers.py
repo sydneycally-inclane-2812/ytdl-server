@@ -50,7 +50,7 @@ def _build_audio_filter_chain(trim_silence_seconds) -> str | None:
 	return ",".join(filters)
 
 
-def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str | None = None):
+def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str | None = None, suppress_logs: bool = True):
 	"""
 	Returns a ytdlp opt dictionary for a specified temp folder. Temp_dir must be a Path object.
 	Downloads files to temp_dir.
@@ -93,6 +93,9 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 				"player_client": ["default", "-android_sdkless"],
 			}
 		},
+		"quiet": suppress_logs,
+		"no_warnings": False,
+		"noprogress": suppress_logs,
 		"ignoreerrors": True,
 		"retries": 5,
 		"fragment_retries": 20,
