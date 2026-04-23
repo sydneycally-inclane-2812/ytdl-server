@@ -95,9 +95,18 @@ echo "Created and configured data and temp directories."
 # Ensure celery runtime directory exists
 CELERY_RUNTIME_DIR="$PROJECT_ROOT/logs/celery"
 CELERY_BEAT_SCHEDULE="$CELERY_RUNTIME_DIR/celerybeat-schedule"
-mkdir -p "$CELERY_RUNTIME_DIR"
-chown root:ytdl "$CELERY_RUNTIME_DIR"
-chmod 2770 "$CELERY_RUNTIME_DIR"
+DATABASE_DIR="$PROJECT_ROOT/.database"
+mkdir -p "$CELERY_RUNTIME_DIR" "$DATABASE_DIR"
+chown root:ytdl "$CELERY_RUNTIME_DIR" "$DATABASE_DIR"
+chmod 2770 "$CELERY_RUNTIME_DIR" "$DATABASE_DIR"
+
+DATABASE_FILE="$DATABASE_DIR/database.db"
+if [[ ! -f "$DATABASE_FILE" ]]; then
+	touch "$DATABASE_FILE"
+fi
+chown root:ytdl "$DATABASE_FILE"
+chmod 660 "$DATABASE_FILE"
+
 
 # Trap signals for cleanup
 PIDS=()

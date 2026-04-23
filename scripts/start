@@ -117,6 +117,19 @@ chmod 1776 "$DATA_ROOT"
 chmod 1776 "$TEMP_ROOT"
 echo "Created and configured data and temp directories."
 
+# Ensure SQLite database directory and file exist with proper permissions
+DATABASE_DIR="$PROJECT_ROOT/.database"
+DATABASE_FILE="$DATABASE_DIR/database.db"
+mkdir -p "$DATABASE_DIR"
+chown root:ytdl "$DATABASE_DIR"
+chmod 2770 "$DATABASE_DIR"
+if [[ ! -f "$DATABASE_FILE" ]]; then
+	touch "$DATABASE_FILE"
+fi
+chown root:ytdl "$DATABASE_FILE"
+chmod 660 "$DATABASE_FILE"
+echo "Created and configured SQLite database at $DATABASE_FILE."
+
 # Write systemd service file
 SERVICE_FILE="/etc/systemd/system/ytdl-server.service"
 # Load template from PROJECT_ROOT/config/ytdl-server.service.template

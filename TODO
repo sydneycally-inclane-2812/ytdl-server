@@ -1,5 +1,5 @@
 - [ ] Implement metadata version check and update mechanism. 
 - [x] Fix year to 2025 always to avoid playlists having issue with it.
 - [ ] Fix retry mechanism for disconnect with more aggressive backoff
-- [ ] Suppress ytdlp logs
+- [x] Suppress ytdlp logs
 - [ ] Add more robust data handling: Delete local file only if external playlist cease to contain the url, any failure in retrieval (disconnection, private video, no longer accessible, etc.) that still contains the url will keep the local files.

@@ -129,16 +129,34 @@ def save_archive_map(playlist_folder: Path, archive_map: dict[str, str]) -> None
 	logger.debug("Saved archive map entries=%d to %s", len(archive_map), archive_path)
 
 
-def extract_remote_playlist_targets(playlist_url: str) -> list[dict[str, str]]:
+def _classify_remote_fetch_failure(error: Exception) -> str:
+	"""Classify yt-dlp extraction failures into retry/safety categories."""
+	message = str(error).lower()
+	network_hints = (
+		"timed out",
+		"timeout",
+		"unreachable",
+		"connection",
+		"network",
+		"reset by peer",
+		"503",
+		"502",
+	)
+	if any(hint in message for hint in network_hints):
+		return "disconnected"
+	return "unavailable"
+
+
+def extract_remote_playlist_targets(playlist_url: str) -> dict:
 	"""
-	Fetch ordered remote playlist targets.
+	Fetch ordered remote playlist targets with trust status.
 
 	Input:
 		playlist_url: Source playlist URL.
 	Purpose:
-		Fetch playlist entries and keep their remote order.
+		Fetch playlist entries, keep remote order, and report trust status.
 	Output:
-		Ordered list of {id, title, url} objects.
+		Dictionary: {status, targets, reason}.
 	"""
 	opts = {
 		"quiet": True,
@@ -146,26 +164,61 @@ def extract_remote_playlist_targets(playlist_url: str) -> list[dict[str, str]]:
 		"extract_flat": True,
 		"ignoreerrors": True,
 	}
-	#Process remote playlist information to a list of target = (title, url). Maintain order.
-	with YoutubeDL(opts) as ydl:
-		info = ydl.extract_info(playlist_url, download=False)
-		entries = info.get("entries", []) if info else []
-		targets: list[dict[str, str]] = []
-		for entry in entries:
-			if not entry:
-				continue
-			video_id = entry.get("id")
-			if not isinstance(video_id, str) or not video_id:
-				continue
-			title = str(entry.get("title") or video_id)
-			targets.append({
-				"id": video_id,
-				"title": title,
-				"url": f"https://www.youtube.com/watch?v={video_id}",
-			})
+	try:
+		# Process remote playlist information to a list of target = (title, url). Maintain order.
+		with YoutubeDL(opts) as ydl:
+			info = ydl.extract_info(playlist_url, download=False)
+	except Exception as e:
+		status = _classify_remote_fetch_failure(e)
+		logger.warning(
+			"Remote playlist fetch failed for %s status=%s reason=%s",
+			playlist_url,
+			status,
+			e,
+		)
+		return {
+			"status": status,
+			"targets": [],
+			"reason": str(e),
+		}
+
+	if info is None:
+		logger.warning("Remote playlist fetch returned no info for %s", playlist_url)
+		return {
+			"status": "unavailable",
+			"targets": [],
+			"reason": "extract_info returned no info",
+		}
+
+	entries = info.get("entries")
+	if entries is None:
+		logger.warning("Remote playlist info missing entries for %s", playlist_url)
+		return {
+			"status": "unavailable",
+			"targets": [],
+			"reason": "playlist entries missing",
+		}
+
+	targets: list[dict[str, str]] = []
+	for entry in entries:
+		if not entry:
+			continue
+		video_id = entry.get("id")
+		if not isinstance(video_id, str) or not video_id:
+			continue
+		title = str(entry.get("title") or video_id)
+		targets.append({
+			"id": video_id,
+			"title": title,
+			"url": f"https://www.youtube.com/watch?v={video_id}",
+		})
 
 	logger.debug("Remote playlist targets fetched=%d from %s", len(targets), playlist_url)
-	return targets
+	return {
+		"status": "ok",
+		"targets": targets,
+		"reason": None,
+	}
 
 
 def _ensure_playlist_copy(playlist_folder: Path) -> None:
@@ -557,7 +610,21 @@ def sync(self, owner: str, playlist: str, url: str | None = None):
 	playlist_temp_dir = TEMP_BASE_PATH / f"{owner}_{playlist}"
 
 	try:
-		remote_targets = extract_remote_playlist_targets(playlist_url)
+		remote_fetch = extract_remote_playlist_targets(playlist_url)
+		remote_status = str(remote_fetch.get("status") or "unavailable")
+		if remote_status != "ok":
+			return {
+				"status": "skipped",
+				"mode": "remote_untrusted",
+				"owner": owner,
+				"playlist": playlist,
+				"remote_status": remote_status,
+				"skipped_reason": remote_fetch.get("reason") or "Remote state unavailable",
+			}
+
+		remote_targets = list(remote_fetch.get("targets") or [])
+		
+		# Handle disconnections, if remote_targets return nothing
 		remote_target_ids = [target["id"] for target in remote_targets]
 		remote_id_set = set(remote_target_ids)
 
