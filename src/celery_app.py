@@ -696,7 +696,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None):
 			reconciliation_files_removed=reconciliation_files_removed,
 		)
 	except Exception as e:
-		raise self.retry(exc=e, countdown=60)
+		raise self.retry(exc=e, countdown=int(random.randint(2, 2) + 3 ** self.request.retries))
 	finally:
 		if playlist_temp_dir.exists():
 			shutil.rmtree(playlist_temp_dir)
