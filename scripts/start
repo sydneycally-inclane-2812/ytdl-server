@@ -113,8 +113,8 @@ mkdir -p "$DATA_ROOT"
 mkdir -p "$TEMP_ROOT"
 chown root:ytdl "$DATA_ROOT"
 chown root:ytdl "$TEMP_ROOT"
-chmod 1776 "$DATA_ROOT"
-chmod 1776 "$TEMP_ROOT"
+chmod 2776 "$DATA_ROOT"
+chmod 2776 "$TEMP_ROOT"
 echo "Created and configured data and temp directories."
 
 # Ensure SQLite database directory and file exist with proper permissions
