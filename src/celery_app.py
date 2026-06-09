@@ -204,10 +204,17 @@ def extract_remote_playlist_targets(playlist_url: str) -> dict:
 		Dictionary: {status, targets, reason}.
 	"""
 	opts = {
-		"quiet": True,
+		"quiet": False,
+		"verbose": True,
 		"skip_download": True,
-		"extract_flat": True,
-		"ignoreerrors": True,
+		"extract_flat": "in_playlist",
+		"ignoreerrors": False,
+		"forceipv4": True,
+
+		# Setting playlist end at 1000 overrides the default of 100. 
+		# If you have a playlist that grows beyond 10000 you have other problems.
+		"playliststart": 1,
+		"playlistend": 10000,
 	}
 	try:
 		# Process remote playlist information to a list of target = (title, url). Maintain order.
