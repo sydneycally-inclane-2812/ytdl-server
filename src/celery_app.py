@@ -736,7 +736,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None, batch_id: str 
 		playlist_name = asyncio.run(_get_playlist_name(owner, playlist))
 		missing_targets = [target for target in remote_targets if target["id"] in missing_ids]
 		suppress_logs = bool(config.get(config.get("current", ""), {}).get("suppress_logs", True))
-		self.logger.debug(f"Trying to download {len(missing_targets)} targets")
+		print(f"Trying to download {len(missing_targets)} targets")
 		successful_download_ids = download_missing_videos(
 			playlist_temp_dir,
 			missing_targets,
@@ -754,7 +754,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None, batch_id: str 
 				sorted(failed_download_ids),
 			)
 		remote_target_ids = [video_id for video_id in remote_target_ids if video_id not in failed_download_ids]
-		self.logger.debug(f"Finished downloading, trying to clean up metadata for {len(remote_target_ids)} targets")
+		print(f"Finished downloading, trying to clean up metadata for {len(remote_target_ids)} targets")
 		return _finalize_playlist_sync(
 			owner=owner,
 			playlist=playlist,
