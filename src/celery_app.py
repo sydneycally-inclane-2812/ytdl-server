@@ -3,11 +3,13 @@ import json
 import logging
 import random
 import shutil
+import uuid
 from datetime import timedelta
 from pathlib import Path
 
 import aiosqlite
 from celery import Celery
+import redis
 from yt_dlp import YoutubeDL
 
 from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts, move_files_to_root
@@ -24,9 +26,13 @@ celery = Celery(
 	broker=f"{redis_base_url}/0",
 	backend=f"{redis_base_url}/1",
 )
+redis_client = redis.Redis.from_url(f"{redis_base_url}/0", decode_responses=True)
 
 scan_wait_minutes = int(config[config["current"]].get("scan_wait", 12))
 scan_wait_extra_maximum_minutes = int(config[config["current"]].get("scan_wait_extra_maximum", 0))
+SYNC_BATCH_ACTIVE_KEY = "ytdl:sync_batch:active"
+SYNC_BATCH_REMAINING_KEY_PREFIX = "ytdl:sync_batch:remaining:"
+SYNC_BATCH_TTL_SECONDS = 24 * 60 * 60
 celery.conf.task_routes = {
     "tasks.download_playlist": {"queue": "downloads"}
 }
@@ -34,6 +40,7 @@ celery.conf.beat_schedule = {
 	"schedule-scan-with-jitter": {
 		"task": "celery_app.schedule_scan",
 		"schedule": timedelta(minutes=scan_wait_minutes),
+		"options": {"expires": scan_wait_minutes * 60},
 	},
 }
  
@@ -145,6 +152,44 @@ def _classify_remote_fetch_failure(error: Exception) -> str:
 	if any(hint in message for hint in network_hints):
 		return "disconnected"
 	return "unavailable"
+
+
+def _sync_batch_remaining_key(batch_id: str) -> str:
+	return f"{SYNC_BATCH_REMAINING_KEY_PREFIX}{batch_id}"
+
+
+def _current_sync_batch_id() -> str | None:
+	try:
+		batch_id = redis_client.get(SYNC_BATCH_ACTIVE_KEY)
+		return str(batch_id) if batch_id else None
+	except redis.RedisError:
+		logger.exception("Failed to read sync batch lock")
+		return None
+
+
+def _start_sync_batch(batch_id: str) -> bool:
+	"""Mark a sync batch as active before queueing per-playlist sync tasks."""
+	try:
+		return bool(redis_client.set(SYNC_BATCH_ACTIVE_KEY, batch_id, nx=True, ex=SYNC_BATCH_TTL_SECONDS))
+	except redis.RedisError:
+		logger.exception("Failed to start sync batch batch_id=%s", batch_id)
+		return False
+
+
+def _finish_sync_batch(batch_id: str, task_id: str | None) -> None:
+	"""Remove a completed sync task from the current batch and clear the lock when done."""
+	if not task_id:
+		return
+	remaining_key = _sync_batch_remaining_key(batch_id)
+	try:
+		if redis_client.srem(remaining_key, task_id):
+			if redis_client.scard(remaining_key) <= 0:
+				redis_client.delete(remaining_key)
+				current_batch_id = redis_client.get(SYNC_BATCH_ACTIVE_KEY)
+				if current_batch_id == batch_id:
+					redis_client.delete(SYNC_BATCH_ACTIVE_KEY)
+	except redis.RedisError:
+			logger.exception("Failed to finish sync batch batch_id=%s task_id=%s", batch_id, task_id)
 
 
 def extract_remote_playlist_targets(playlist_url: str) -> dict:
@@ -576,6 +621,23 @@ def schedule_scan():
 	"""
 	extra_minutes = max(0, scan_wait_extra_maximum_minutes)
 	countdown_seconds = random.randint(0, extra_minutes * 60) if extra_minutes else 0
+	active_batch_id = _current_sync_batch_id()
+	if active_batch_id:
+		logger.info(
+			"Skipping enqueue_all because sync batch is still active batch_id=%s countdown_seconds=%d base_minutes=%d extra_max_minutes=%d",
+			active_batch_id,
+			countdown_seconds,
+			scan_wait_minutes,
+			extra_minutes,
+		)
+		return {
+			"scheduled": False,
+			"reason": "sync_in_progress",
+			"batch_id": active_batch_id,
+			"countdown_seconds": countdown_seconds,
+			"base_minutes": scan_wait_minutes,
+			"extra_max_minutes": extra_minutes,
+		}
 	logger.info(
 		"Scheduling enqueue_all with jitter countdown_seconds=%d base_minutes=%d extra_max_minutes=%d",
 		countdown_seconds,
@@ -592,7 +654,7 @@ def schedule_scan():
 
 
 @celery.task(bind=True, max_retries=3)
-def sync(self, owner: str, playlist: str, url: str | None = None):
+def sync(self, owner: str, playlist: str, url: str | None = None, batch_id: str | None = None):
 	"""
 	Sync a single playlist using the scan-sync workflow.
 
@@ -608,6 +670,7 @@ def sync(self, owner: str, playlist: str, url: str | None = None):
 	#Fetching remote playlist information.
 	playlist_url = url or f"https://www.youtube.com/playlist?list={playlist}"
 	playlist_temp_dir = TEMP_BASE_PATH / f"{owner}_{playlist}"
+	should_finish_batch = batch_id is not None
 
 	try:
 		remote_fetch = extract_remote_playlist_targets(playlist_url)
@@ -696,8 +759,13 @@ def sync(self, owner: str, playlist: str, url: str | None = None):
 			reconciliation_files_removed=reconciliation_files_removed,
 		)
 	except Exception as e:
-		raise self.retry(exc=e, countdown=int(random.randint(2, 2) + 3 ** self.request.retries))
+		if self.request.retries < self.max_retries:
+			should_finish_batch = False
+			raise self.retry(exc=e, countdown=int(random.randint(2, 2) + 3 ** self.request.retries))
+		raise
 	finally:
+		if should_finish_batch:
+			_finish_sync_batch(batch_id=batch_id or "", task_id=self.request.id)
 		if playlist_temp_dir.exists():
 			shutil.rmtree(playlist_temp_dir)
 
@@ -785,23 +853,70 @@ def enqueue_all(self):
 				return await cur.fetchall()
 
 		rows = asyncio.run(fetch_playlists())
+		batch_id = uuid.uuid4().hex
+		if not _start_sync_batch(batch_id):
+			logger.info("Skipping enqueue_all because another sync batch is already active batch_id=%s", batch_id)
+			return {
+				"status": "skipped",
+				"reason": "sync_in_progress",
+				"queued": 0,
+				"playlists": len(rows),
+				"mode": "enqueue_all",
+			}
 		queued = 0
 		for row in rows:
 			owner = row["owner"]
 			playlist_id = row["playlist_id"]
 			playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}"
-			sync.apply_async(kwargs={
-				"owner": owner,
-				"playlist": playlist_id,
-				"url": playlist_url,
-			})
+			task_id = uuid.uuid4().hex
+			remaining_key = _sync_batch_remaining_key(batch_id)
+			try:
+				redis_client.sadd(remaining_key, task_id)
+				sync.apply_async(
+					kwargs={
+						"owner": owner,
+						"playlist": playlist_id,
+						"url": playlist_url,
+						"batch_id": batch_id,
+					},
+					task_id=task_id,
+				)
+			except Exception:
+				logger.exception(
+					"Failed to enqueue sync task batch_id=%s task_id=%s owner=%s playlist=%s",
+					batch_id,
+					task_id,
+					owner,
+					playlist_id,
+				)
+				try:
+					redis_client.srem(remaining_key, task_id)
+				except redis.RedisError:
+					logger.exception(
+						"Failed to remove failed sync task from batch batch_id=%s task_id=%s",
+						batch_id,
+						task_id,
+					)
+				continue
 			queued += 1
+
+		if queued == 0:
+			redis_client.delete(SYNC_BATCH_ACTIVE_KEY)
+			redis_client.delete(_sync_batch_remaining_key(batch_id))
+			return {
+				"status": "success",
+				"queued": 0,
+				"playlists": len(rows),
+				"mode": "enqueue_all",
+				"batch_id": batch_id,
+			}
 
 		return {
 			"status": "success",
 			"queued": queued,
 			"playlists": len(rows),
 			"mode": "enqueue_all",
+			"batch_id": batch_id,
 		}
 	except Exception as e:
 		raise self.retry(exc=e, countdown=60)

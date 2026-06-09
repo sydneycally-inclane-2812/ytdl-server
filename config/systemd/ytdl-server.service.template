@@ -20,7 +20,7 @@ ExecStart={{PROJECT_ROOT}}/scripts/server-runner.sh
 Restart=always
 RestartSec=3
 KillMode=control-group
-TimeoutStopSec=30
+TimeoutStopSec=300
 StandardOutput=journal
 StandardError=journal
 
