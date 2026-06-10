@@ -213,8 +213,13 @@ def extract_remote_playlist_targets(playlist_url: str) -> dict:
 
 		# Setting playlist end at 1000 overrides the default of 100. 
 		# If you have a playlist that grows beyond 10000 you have other problems.
-		"playliststart": 1,
-		"playlistend": 10000,
+		#"playliststart": 1,
+		#"playlistend": 10000,
+
+		"playlist_items": "1:10000",
+		"lazy_playlist": False,
+		"extractor_retries": 2,
+		"socket_timeout": 60
 	}
 	try:
 		# Process remote playlist information to a list of target = (title, url). Maintain order.
