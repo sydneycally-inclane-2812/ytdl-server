@@ -85,6 +85,7 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 	album_meta_source = album_tag if album_tag else "%(playlist_title,playlist,uploader,channel,creator)s"
 	cookie_file = str(homedir / "cookies" / "cookies.txt") if use_cookies else None
 
+
 	ytdl_opts = {
 		"format": "bestaudio[protocol!=m3u8_native][protocol!=m3u8]/bestaudio/best",
 		"outtmpl": outtmpl,
@@ -170,7 +171,9 @@ def get_ytdl_opts(temp_dir: Path, playlist_folder: bool = True, album_name: str 
 			],
 		},
 	}
-
+	js_runtimes = normalize_js_runtimes(runtime_config.get("js_runtimes", None))
+	if js_runtimes is not None:
+		ytdl_opts["js_runtimes"] = js_runtimes
 	if audio_filter_chain:
 		ytdl_opts["postprocessor_args"]["FFmpegExtractAudio"].extend([
 			"-af",
@@ -268,3 +271,65 @@ def check_playlist_accessible(url: str) -> dict:
 		}
 	except DownloadError as e:
 		raise RuntimeError(str(e))
+
+def normalize_js_runtimes(raw_js_runtimes):
+	if raw_js_runtimes is None:
+		return None
+
+	if isinstance(raw_js_runtimes, dict):
+		return raw_js_runtimes or None
+
+	if isinstance(raw_js_runtimes, str):
+		raw_js_runtimes = raw_js_runtimes.strip()
+		if not raw_js_runtimes:
+			return None
+
+		if ":" in raw_js_runtimes:
+			runtime, path = raw_js_runtimes.split(":", 1)
+			runtime = runtime.strip()
+			path = path.strip()
+
+			if not runtime:
+				return None
+
+			if path:
+				return {
+					runtime: {
+						"path": path,
+					}
+				}
+
+			return {
+				runtime: {},
+			}
+
+		return {
+			raw_js_runtimes: {},
+		}
+
+	if isinstance(raw_js_runtimes, list):
+		normalized = {}
+
+		for item in raw_js_runtimes:
+			if not isinstance(item, str):
+				continue
+
+			item = item.strip()
+			if not item:
+				continue
+
+			if ":" in item:
+				runtime, path = item.split(":", 1)
+				runtime = runtime.strip()
+				path = path.strip()
+
+				if not runtime:
+					continue
+
+				normalized[runtime] = {"path": path} if path else {}
+			else:
+				normalized[item] = {}
+
+		return normalized or None
+
+	return None

@@ -12,7 +12,7 @@ from celery import Celery
 import redis
 from yt_dlp import YoutubeDL
 
-from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts, move_files_to_root
+from helpers import METADATA_PIPELINE_VERSION, get_ytdl_opts, move_files_to_root, normalize_js_runtimes
 from metadata_cleanup import cleanup_folder_metadata
 
 homedir = Path(__file__).parent.parent.resolve()
@@ -33,6 +33,9 @@ scan_wait_extra_maximum_minutes = int(config[config["current"]].get("scan_wait_e
 SYNC_BATCH_ACTIVE_KEY = "ytdl:sync_batch:active"
 SYNC_BATCH_REMAINING_KEY_PREFIX = "ytdl:sync_batch:remaining:"
 SYNC_BATCH_TTL_SECONDS = 24 * 60 * 60
+js_runtimes = config[config["current"]].get("js_runtimes")
+js_runtimes = normalize_js_runtimes(js_runtimes)
+
 celery.conf.task_routes = {
     "tasks.download_playlist": {"queue": "downloads"}
 }
@@ -221,6 +224,8 @@ def extract_remote_playlist_targets(playlist_url: str) -> dict:
 		"extractor_retries": 2,
 		"socket_timeout": 60
 	}
+	if js_runtimes:
+		opts["js_runtimes"] = js_runtimes
 	try:
 		# Process remote playlist information to a list of target = (title, url). Maintain order.
 		with YoutubeDL(opts) as ydl:
@@ -271,6 +276,7 @@ def extract_remote_playlist_targets(playlist_url: str) -> dict:
 		})
 
 	logger.debug("Remote playlist targets fetched=%d from %s", len(targets), playlist_url)
+
 	return {
 		"status": "ok",
 		"targets": targets,
@@ -723,16 +729,44 @@ def sync(self, owner: str, playlist: str, url: str | None = None, batch_id: str 
 		removed_id_set = local_ids_before - remote_id_set
 		missing_ids = remote_id_set - local_ids_before
 
-		#If none, exit.
-		if not removed_id_set and not missing_ids:
+		# If diff is larger than 10 and updated target list is exactly 100, skip due to pagination error
+		diff_size = len(removed_id_set) + len(missing_ids)
+
+		if diff_size > 10 and len(remote_target_ids) == 100:
+			logger.warning(
+				"Skipping sync for %s/%s due to suspected playlist pagination error: "
+				"diff_size=%d remote_targets=%d local_ids_before=%d removed=%d missing=%d",
+				owner,
+				playlist,
+				diff_size,
+				len(remote_target_ids),
+				len(local_ids_before),
+				len(removed_id_set),
+				len(missing_ids),
+			)
 			return {
-				"status": "success",
-				"mode": "noop",
+				"status": "skipped",
+				"mode": "suspected_pagination_error",
 				"owner": owner,
 				"playlist": playlist,
-				"removed_ids": 0,
-				"missing_ids": 0,
+				"remote_targets": len(remote_target_ids),
+				"local_ids_before": len(local_ids_before),
+				"diff_size": diff_size,
+				"removed_ids": len(removed_id_set),
+				"missing_ids": len(missing_ids),
+				"skipped_reason": "Remote target list is exactly 100 and diff is larger than 10",
 			}
+
+			#If none, exit.
+			if not removed_id_set and not missing_ids:
+				return {
+					"status": "success",
+					"mode": "noop",
+					"owner": owner,
+					"playlist": playlist,
+					"removed_ids": 0,
+					"missing_ids": 0,
+				}
 
 		#Create a directory in temp with format <user>_<playlist_id>.
 		playlist_temp_dir.mkdir(parents=True, exist_ok=True)

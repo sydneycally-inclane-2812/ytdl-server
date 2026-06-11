@@ -12,7 +12,8 @@
                 "port": 8080,
                 "scan_wait": 15,
                 "scan_wait_extra_maximum": 1,
-				"suppress_logs": false
+				"suppress_logs": false,
+				"js_runtimes": null
         },
         "prod": {
                 "root_dir": "",
@@ -27,7 +28,8 @@
                 "port": 8080,
                 "scan_wait": 20,
                 "scan_wait_extra_maximum": 10,
-				"suppress_logs": true
+				"suppress_logs": true,
+				"js_runtimes": "/root/.deno/bin/deno"
         },
         "current": "prod"
 }
