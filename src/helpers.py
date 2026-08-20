@@ -226,9 +226,11 @@ def validate_true_playlist_url(url: str) -> str:
 	if not match:
 		raise ValueError(f"Invalid YouTube playlist URL {url}")
 	playlist_id = match.group(1)
-	if len(playlist_id) != 34:
-		raise ValueError(f"Invalid Youtube ID length {len(playlist_id)}")
-	return f"https://www.youtube.com/playlist?list={playlist_id}"
+	try:
+		check_playlist_accessible(url)
+		return f"https://www.youtube.com/playlist?list={playlist_id}"
+	except Exception as exc:
+		raise ValueError(f"Invalid YouTube playlist URL {url}") from exc
 
 
 def check_playlist_accessible(url: str) -> dict:
